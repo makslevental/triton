@@ -99,6 +99,20 @@ void BufferEmitter::emitStore(Value rsrcDesc, Value offset, Value data,
                                               ArrayRef<NamedAttribute>());
 }
 
+void BufferEmitter::emitAtomicFAdd(Value rsrcDesc, Value offset, Value data,
+                                   Value pred) {
+  VectorType vecTy = cast<VectorType>(data.getType());
+  Type bufferType = getBufferOpType(vecTy);
+  if (bufferType.isInteger(32))
+    bufferType = rewriter.getF32Type();
+  if (vecTy != bufferType)
+    data = bitcast(data, bufferType);
+  SmallVector<Value, 6> args{data};
+  fillCommonArgs(vecTy, rsrcDesc, offset, pred, args);
+  rewriter.create<ROCDL::RawPtrBufferAtomicFaddOp>(loc, TypeRange{}, args,
+                                                   ArrayRef<NamedAttribute>());
+}
+
 Type BufferEmitter::getBufferOpType(Type type) {
   int64_t vecSize = 1;
   Type elementType = type;

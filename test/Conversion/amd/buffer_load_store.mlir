@@ -176,3 +176,37 @@ module attributes {"triton_gpu.num-ctas" = 1 : i32, "triton_gpu.num-warps" = 1 :
         tt.return
   }
 }
+
+// -----
+
+#blocked0 = #triton_gpu.blocked<{sizePerThread = [2], threadsPerWarp = [32], warpsPerCTA = [1], order = [0], CTAsPerCGA = [1], CTASplitNum = [1], CTAOrder = [0]}>
+module attributes {"triton_gpu.num-ctas" = 1 : i32, "triton_gpu.num-warps" = 1 : i32} {
+    // LABEL: buffer_atomic_fadd_f16
+    tt.func @buffer_atomic_fadd_f16(%value : tensor<64xf16, #blocked0>, %arg0: !tt.ptr<f16> {tt.divisibility = 16 : i32}, %offset : tensor<64xi32, #blocked0>{tt.divisibility = 16 : i32}) {
+        // CHECK: %5 = rocdl.make.buffer.rsrc %arg1, %2, %4, %3 : <1> to <8>
+        // CHECK: %25 = llvm.bitcast %24 : vector<2xf16> to f32
+        // CHECK: %29 = llvm.select %6, %28, %26 : i1, i32
+        // CHECK: %30 = llvm.mlir.constant(0 : i32) : i32
+        // CHECK: %31 = llvm.mlir.constant(0 : i32) : i32
+        // CHECK: rocdl.raw.ptr.buffer.atomic.fadd %25, %5, %29, %30, %31 : f32
+        amdgpu.buffer_atomic_fadd %value, %arg0[%offset] : tensor<64xf16, #blocked0>
+        tt.return
+  }
+}
+
+// -----
+
+#blocked0 = #triton_gpu.blocked<{sizePerThread = [1], threadsPerWarp = [32], warpsPerCTA = [1], order = [0], CTAsPerCGA = [1], CTASplitNum = [1], CTAOrder = [0]}>
+module attributes {"triton_gpu.num-ctas" = 1 : i32, "triton_gpu.num-warps" = 1 : i32} {
+    // LABEL: buffer_atomic_fadd_f32
+    tt.func @buffer_atomic_fadd_32(%value : tensor<32xf32, #blocked0>, %arg0: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %offset : tensor<32xi32, #blocked0>{tt.divisibility = 16 : i32}) {
+        // CHECK: %4 = rocdl.make.buffer.rsrc %arg1, %1, %3, %2 : <1> to <8>
+        // CHECK: %21 = llvm.bitcast %20 : vector<1xf32> to f32
+        // CHECK: %25 = llvm.select %5, %24, %22 : i1, i32
+        // CHECK: %26 = llvm.mlir.constant(0 : i32) : i32
+        // CHECK: %27 = llvm.mlir.constant(0 : i32) : i32
+        // CHECK: rocdl.raw.ptr.buffer.atomic.fadd %21, %4, %25, %26, %27 : f32
+        amdgpu.buffer_atomic_fadd %value, %arg0[%offset] : tensor<32xf32, #blocked0>
+        tt.return
+  }
+}

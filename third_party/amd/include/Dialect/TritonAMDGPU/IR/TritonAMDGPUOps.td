@@ -151,4 +151,30 @@ def BufferStoreOp : TT_AMDGPU_Op<"buffer_store", [
     }];
 }
 
+def BufferAtomicFAddOp : TT_AMDGPU_Op<"buffer_atomic_fadd", [
+  MemoryEffects<[MemWrite<GlobalMemory>]>,
+  SameLoadStoreOperandsEncoding,
+  MemoryEffects<[MemWrite<GlobalMemory>]>,
+  TypesMatchWith<"value element type matches the pointed type of ptr", "value", "ptr", "getPointerTypeToElement($_self)">,
+  TypesMatchWith<"value and offsets have the same shape", "value", "offsets", "getI32SameShape($_self)">,
+  TypesMatchWith<"value and mask have the same shape", "value", "mask", "getI1SameShape($_self)",
+                 "($_op.getOperands().size() <= 3) || std::equal_to<>()">,
+]>{
+    let summary = "";
+    let description = [{
+    }];
+    let arguments = (
+      ins
+      TT_Tensor:$value,
+      TT_Ptr:$ptr,
+      I32Tensor:$offsets,
+      Optional<TT_BoolTensor>:$mask
+    );
+
+    let assemblyFormat = [{
+      $value `,` $ptr `[` $offsets `]` (`,` $mask^)?
+      attr-dict `:` type($value)
+    }];
+}
+
 #endif
