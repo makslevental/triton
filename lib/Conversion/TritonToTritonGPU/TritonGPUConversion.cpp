@@ -5,6 +5,7 @@
 
 #include "mlir/IR/IRMapping.h"
 #include "mlir/Support/LLVM.h"
+#include "third_party/amd/include/Dialect/TritonAMDGPU/IR/Dialect.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/TritonGPU/IR/Dialect.h"
 #include "triton/Dialect/TritonGPU/Transforms/Utility.h"
@@ -66,6 +67,10 @@ TritonGPUTypeConverter::TritonGPUTypeConverter(MLIRContext *context,
   // convert origValue to newValue
   addSourceMaterialization([&](OpBuilder &builder, RankedTensorType tensorType,
                                ValueRange inputs, Location loc) -> Value {
+    for (auto v : inputs) {
+      v.dump();
+    }
+    tensorType.dump();
     llvm_unreachable("Source rematerialization should not happen in Triton -> "
                      "TritonGPU Conversion");
     return {};
@@ -97,6 +102,7 @@ TritonGPUConversionTarget::TritonGPUConversionTarget(
 
   addDynamicallyLegalDialect<arith::ArithDialect, math::MathDialect,
                              triton::TritonDialect, cf::ControlFlowDialect,
+                            triton::amdgpu::TritonAMDGPUDialect,
                              scf::SCFDialect>([&](Operation *op) {
     bool hasLegalRegions = true;
     for (auto &region : op->getRegions()) {

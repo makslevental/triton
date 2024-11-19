@@ -373,6 +373,10 @@ class InterpreterBuilder:
         mask = TensorHandle(np.ones_like(ptr.data, dtype=bool), tl.int1)
         return self.create_masked_store(ptr, val, mask, None, None)
 
+    def create_amd_buffer_store(self, ptr, val, _0, _1):
+        mask = TensorHandle(np.ones_like(ptr.data, dtype=bool), tl.int1)
+        return _interpreter.create_amd_buffer_store(ptr.data, val.data, mask.data)
+
     def create_masked_load(self, ptrs, mask, other, cache_modifier, eviction_policy, is_volatile):
         dtype_tt = ptrs.get_element_ty()
         dtype_np = _get_np_dtype(dtype_tt)

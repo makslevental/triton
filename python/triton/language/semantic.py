@@ -1265,6 +1265,48 @@ def _store_legacy(ptr, val, mask, boundary_check, cache, eviction, builder):
         raise ValueError("Mask must have boolean scalar type")
     return tl.tensor(builder.create_masked_store(ptr.handle, val.handle, mask.handle, cache, eviction), tl.void)
 
+def _amd_buffer_store_legacy(ptr, offsets, val, mask, boundary_check, cache, eviction, builder):
+    # Store by a tensor of pointers or a pointer of scalar: `block_type<pointer_type<>>` or `pointer_type<>`
+    if not ptr.type.scalar.is_ptr():
+        raise ValueError(f"Unsupported ptr type {ptr.type.__repr__()} in `tl.store`")
+
+    # Check `boundary_check` argument
+    if boundary_check:
+        raise ValueError("`boundary_check` argument is not supported for storing a tensor of pointers or storing a "
+                         "scalar. Because the compiler does not know the boundary; please use block pointers "
+                         "(defined by `make_block_ptr`) instead")
+
+    # # For a pointer of scalar, check the type of `val` and `mask`
+    # if not ptr.type.is_block():
+    #     if val.type.is_block():
+    #         raise ValueError("Value argument cannot be block type if pointer argument is not a block")
+    #     if mask and mask.type.is_block():
+    #         raise ValueError("Mask argument cannot be block type if pointer argument is not a block")
+
+    # Make `mask` and `val` into the same shape as `ptr`
+    if ptr.type.is_block():
+        val = broadcast_impl_shape(val, ptr.type.get_block_shapes(), builder)
+        if mask is not None:
+            mask = broadcast_impl_shape(mask, ptr.type.get_block_shapes(), builder)
+
+    ptr_ty = ptr.type.scalar
+    elt_ty = ptr_ty.element_ty
+
+    # Treat `pointer_type<tl.int1>` as `pointer_type<tl.int8>`
+    if elt_ty == tl.int1:
+        elt_ty = tl.int8
+        ptr_ty = tl.pointer_type(elt_ty, ptr_ty.address_space)
+        ptr = cast(ptr, ptr_ty, builder)
+
+    # Cast to target data type
+    val = cast(val, elt_ty, builder)
+
+    # Build IR
+    if mask is None:
+        return tl.tensor(builder.create_amd_buffer_store(ptr.handle, offsets.handle, val.handle), tl.void)
+    if not mask.type.scalar.is_bool():
+        raise ValueError("Mask must have boolean scalar type")
+    return tl.tensor(builder.create_amd_buffer_store(ptr.handle, offsets.handle, val.handle, mask.handle), tl.void)
 
 def store(ptr: tl.tensor, val: tl.tensor, mask: Optional[tl.tensor], boundary_check, cache_modifier: str,
           eviction_policy: str, builder: ir.builder) -> tl.tensor:
@@ -1282,6 +1324,21 @@ def store(ptr: tl.tensor, val: tl.tensor, mask: Optional[tl.tensor], boundary_ch
         # Store by a tensor of pointers or a pointer of scalar: `block_type<pointer_type<>>` or `pointer_type<>`
         return _store_legacy(ptr, val, mask, boundary_check, cache, eviction, builder)
 
+def amd_buffer_store(ptr: tl.tensor, offsets, val: tl.tensor, mask: Optional[tl.tensor], boundary_check, cache_modifier: str,
+          eviction_policy: str, builder: ir.builder) -> tl.tensor:
+    # Cache and eviction options
+    cache = _str_to_store_cache_modifier(cache_modifier)
+    eviction = _str_to_eviction_policy(eviction_policy)
+
+    if ptr.type.is_const() or ptr.type.scalar.is_const():
+        raise ValueError("Cannot store to a constant pointer")
+
+    if ptr.type.is_ptr() and ptr.type.element_ty.is_block():
+        # Store by a block pointer: `pointer_type<block_type<>>`
+        return _amd_buffer_store_legacy(ptr, offsets, val, mask, boundary_check, cache, eviction, builder)
+    else:
+        # Store by a tensor of pointers or a pointer of scalar: `block_type<pointer_type<>>` or `pointer_type<>`
+        return _amd_buffer_store_legacy(ptr, offsets, val, mask, boundary_check, cache, eviction, builder)
 
 #########
 # atomic

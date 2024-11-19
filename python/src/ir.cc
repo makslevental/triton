@@ -3,6 +3,7 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
+#include "Dialect/TritonAMDGPU/IR/Dialect.h"
 #include "mlir/Bytecode/BytecodeWriter.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
@@ -1287,6 +1288,14 @@ void init_triton_ir(py::module &&m) {
               EvictionPolicy evictionPolicy) -> void {
              self.create<StoreOp>(ptrs, value, cacheModifier, evictionPolicy);
            })
+      .def(
+          "create_amd_buffer_store",
+          [](TritonOpBuilder &self, Value &ptrs, Value &offsets, Value &value,
+             std::optional<Value> mask) -> void {
+            self.create<amdgpu::BufferStoreOp>(value, ptrs, offsets,
+                                               mask.value_or(nullptr));
+          },
+          "ptrs"_a, "offsets"_a, "value"_a, "mask"_a = py::none())
       .def("create_tensor_pointer_load",
            [](TritonOpBuilder &self, Value &ptr,
               std::vector<int32_t> &boundaryCheck,

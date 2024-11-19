@@ -1044,6 +1044,9 @@ class tensor(_value):
     def store(self, value, mask=None, boundary_check=(), cache_modifier="", eviction_policy="") -> tensor:
         ...
 
+    def amd_buffer_store(self, value, mask=None, boundary_check=(), cache_modifier="", eviction_policy="") -> tensor:
+        ...
+
     def advance(self, offsets) -> tensor:
         ...
 
@@ -1813,6 +1816,19 @@ def store(pointer, value, mask=None, boundary_check=(), cache_modifier="", evict
     cache_modifier = _constexpr_to_value(cache_modifier)
     eviction_policy = _constexpr_to_value(eviction_policy)
     return semantic.store(pointer, value, mask, boundary_check, cache_modifier, eviction_policy, _builder)
+
+
+@_tensor_member_fn
+@builtin
+def amd_buffer_store(pointer, offsets, value, mask=None, boundary_check=(), cache_modifier="", eviction_policy="", _builder=None):
+    # `value` can be constexpr
+    value = semantic.to_tensor(value, _builder)
+    mask = _constexpr_to_value(mask)
+    if mask is not None:
+        mask = semantic.to_tensor(mask, _builder)
+    cache_modifier = _constexpr_to_value(cache_modifier)
+    eviction_policy = _constexpr_to_value(eviction_policy)
+    return semantic.amd_buffer_store(pointer, offsets, value, mask, boundary_check, cache_modifier, eviction_policy, _builder)
 
 
 @builtin
