@@ -1,0 +1,174 @@
+name: "Build Triton Upstream bindings wheel"
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+concurrency:
+  # A PR number if a pull request and otherwise the commit hash. This cancels
+  # queued and in-progress runs for the same PR (presubmit) or commit
+  # (postsubmit). The workflow name is prepended to avoid conflicts between
+  # different workflows.
+  group: ${{ github.workflow }}-${{ github.event.number || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+
+    strategy:
+      fail-fast: false
+      matrix:
+        runs-on: ["ubuntu-22.04", "macos-14", "macos-13"]
+        python-version: ["3.10", "3.11", "3.12"]
+        include: [
+          {runs-on: "ubuntu-22.04", name: "manylinux_x86_64", os: "almalinux", arch: x86_64, container: "quay.io/pypa/manylinux_2_28_x86_64"},
+          # {runs-on: "ubuntu-22.04", name: "ubuntu_x86_64", os: "ubuntu", arch: x86_64},
+          {runs-on: "macos-14", name: "macos_arm64", os: "macos", arch: arm64},
+          {runs-on: "macos-13", name: "macos_x86_64", os: "macos", arch: x86_64},
+        ]
+          # triton doesn't distribute a windows build of llvm...
+          # - name: "windows_x86_64"
+          #   runs-on: "windows-2019"
+          #   os: "windows"
+          #   arch: x86_64
+
+    runs-on: ${{ matrix.runs-on }}
+
+    name: "${{ matrix.name }} ${{ matrix.python-version }}"
+
+    defaults:
+      run:
+        shell: bash
+
+    permissions:
+      id-token: write
+      contents: write
+
+    env:
+      # either the PR number or `branch-N` where N always increments
+      cache-key: "triton_mlir_${{ matrix.name }}_${{ matrix.python-version }}_${{ format('{0}-{1}', github.ref_name, github.run_number) }}"
+
+    container:
+      image: ${{ matrix.container }}
+
+    steps:
+      - name: "Check out repository"
+        uses: actions/checkout@v4.2.2
+        with:
+          submodules: true
+
+      - name: "Setup base"
+        uses: ./.github/actions/setup_base
+        id: setup_base
+        with:
+          cache-key: ${{ env.cache-key }}
+          restore-key: "triton_mlir_${{ matrix.name }}_${{ matrix.python-version }}_"
+          os: ${{ matrix.os }}
+          arch: ${{ matrix.arch }}
+          python-version: ${{ matrix.python-version }}
+
+      - if: ${{ matrix.os == 'almalinux' }}
+        run: |
+          git config --global --add safe.directory /__w/triton/triton
+
+      - name: "Build"
+        run: |
+          
+          set -x
+          
+          pushd python/triton_mlir
+          $python3_command -m pip install setuptools wheel
+          $python3_command -m pip install -r requirements.txt
+          LLVM_URL="$($python3_command setup.py --llvm-url)" 
+          popd
+          
+          curl -sLO $LLVM_URL
+          LLVM_NAME=$(basename "$LLVM_URL" ".tar.gz")
+          tar xf $LLVM_NAME.tar.gz
+          export LLVM_INSTALL_DIR="$PWD/$LLVM_NAME"
+          export TRITON_SRC_DIR="$PWD"
+          export TRITON_BUILD_DIR="$PWD/triton-build"
+          export TRITON_INSTALL_DIR="$PWD/triton-install"
+          
+          ccache -z
+          
+          export Python3_EXECUTABLE="$(which $python3_command)"
+          
+          cmake -GNinja \
+            -S $TRITON_SRC_DIR \
+            -B $TRITON_BUILD_DIR \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$LLVM_INSTALL_DIR" \
+            -DCMAKE_C_VISIBILITY_PRESET=hidden \
+            -DCMAKE_CXX_VISIBILITY_PRESET=hidden \
+            -DCMAKE_VISIBILITY_INLINES_HIDDEN=ON \
+            -DPython3_EXECUTABLE="$Python3_EXECUTABLE" \
+            -DCMAKE_INSTALL_PREFIX="$TRITON_INSTALL_DIR" \
+            -DLLVM_ENABLE_LIBEDIT=OFF \
+            -DTRITON_BUILD_PYTHON_MODULE=OFF \
+            -DTRITON_BUILD_PROTON=OFF \
+            -DTRITON_CODEGEN_BACKENDS="amd;nvidia" \
+            -DTRITON_BUILD_MLIR_PYTHON_MODULE=ON
+          cmake --build "$TRITON_BUILD_DIR" --target install
+          
+          ccache -s
+          
+          cp "$TRITON_SRC_DIR/python/triton_mlir/setup.py" "$TRITON_INSTALL_DIR/python_packages"
+          pushd "$TRITON_INSTALL_DIR/python_packages"
+          # prevent universal wheels from being built for macos
+          _PYTHON_HOST_PLATFORM=$($python3_command -c "import sysconfig; print(sysconfig.get_platform())")
+          export OSX_DEPLOYMENT_TARGET="$(echo $_PYTHON_HOST_PLATFORM | cut -d "-" -f 2)"
+          export _PYTHON_HOST_PLATFORM="macosx-$OSX_DEPLOYMENT_TARGET-${{ matrix.arch }}"
+          $python3_command -m pip wheel .
+          popd
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: triton_mlir_${{ matrix.name }}_${{ matrix.python-version }}_artifact
+          path: triton-install/python_packages/triton_mlir*.whl
+          if-no-files-found: warn
+
+      - name: Release current commit
+        uses: ncipollo/release-action@v1.12.0
+        with:
+          artifacts: "triton-install/python_packages/triton_mlir*.whl"
+          token: "${{ secrets.GITHUB_TOKEN }}"
+          tag: "latest"
+          name: "latest"
+          removeArtifacts: false
+          allowUpdates: true
+          replacesArtifacts: true
+          makeLatest: true
+
+      - name: Release current commit
+        uses: ncipollo/release-action@v1.12.0
+        with:
+          owner: makslevental
+          repo: wheels
+          artifacts: "triton-install/python_packages/triton_mlir*.whl"
+          token: "${{ secrets.WHEELS_RELEASE }}"
+          tag: "i"
+          name: "i"
+          removeArtifacts: false
+          allowUpdates: true
+          replacesArtifacts: true
+          makeLatest: true
+          artifactErrorsFailBuild: true
+
+      - name: "Save cache"
+        uses: actions/cache/save@v3
+        if: ${{ !cancelled() }}
+        with:
+          path: ${{ steps.setup_base.outputs.cache-dir }}
+          key: ${{ env.cache-key }}
+
+      - name: "Setup tmate session"
+        if: ${{ failure() }}
+        uses: mxschmitt/action-tmate@v3.18
+        with:
+          limit-access-to-actor: true
+          connect-timeout-seconds: 60
+          install-dependencies: ${{ startsWith(matrix.os, 'macos') || startsWith(matrix.os, 'windows') || startsWith(matrix.os, 'ubuntu') }}
