@@ -170,6 +170,12 @@ endif()
 
 # -----
 
+if(TRITON_BUILD_MLIR_PYTHON_MODULE)
+  include(MLIRDetectPythonEnv)
+  mlir_configure_python_dev_packages()
+  add_subdirectory(python)
+endif()
+
 # ------
 if(TRITON_BUILD_PYTHON_MODULE)
   message(STATUS "Adding Python module")

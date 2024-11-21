@@ -25,8 +25,8 @@
 #define TRITON_AMDGPU_ATTRDEFS
 
 include "mlir/IR/AttrTypeBase.td"
-include "TritonAMDGPUDialect.td"
 include "mlir/IR/EnumAttr.td"
+include "amd/include/Dialect/TritonAMDGPU/IR/TritonAMDGPUDialect.td"
 
 class TritonAMDGPU_Attr<string name, list<Trait> traits = [],
                      string baseCppClass = "::mlir::Attribute">
