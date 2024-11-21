@@ -37,8 +37,8 @@ include "mlir/IR/EnumAttr.td"
 include "mlir/Dialect/LLVMIR/LLVMOpBase.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td" // Pure
-include "TritonAMDGPUDialect.td"
-include "TritonAMDGPUAttrDefs.td"
+include "amd/include/Dialect/TritonAMDGPU/IR/TritonAMDGPUDialect.td"
+include "amd/include/Dialect/TritonAMDGPU/IR/TritonAMDGPUAttrDefs.td"
 
 
 class TT_AMDGPU_Op<string mnemonic, list<Trait> traits = []> :
@@ -137,7 +137,6 @@ def InstructionSchedHint : TT_AMDGPU_Op<"instruction_sched_hint", []> {
   }];
 
   let arguments = (ins
-    TritonAMDGPU_SchedHintVariantAttr:$variant,
     TritonAMDGPU_InstCounter:$numDsReadsA,
     TritonAMDGPU_InstCounter:$numDsReadsB,
     TritonAMDGPU_InstCounter:$numDsWritesA,
@@ -150,11 +149,11 @@ def InstructionSchedHint : TT_AMDGPU_Op<"instruction_sched_hint", []> {
   );
 
   let builders = [
-    OpBuilder<(ins "amdgpu::SchedHint":$variant), [{
+    OpBuilder<(ins), [{
       auto ctx = $_state.getContext();
       auto noneType = NoneType::get(ctx);
       auto emptyAttr = amdgpu::InstCounterAttr::get(ctx, 0, noneType);
-      build($_builder, $_state, variant, emptyAttr, emptyAttr, emptyAttr, emptyAttr,
+      build($_builder, $_state, emptyAttr, emptyAttr, emptyAttr, emptyAttr,
             emptyAttr, emptyAttr, false, false, emptyAttr);
     }]>
   ];
@@ -206,11 +205,6 @@ def BufferLoadOp : TT_AMDGPU_Op<"buffer_load", [
       are similar to a normal load, i.e., the `mask` is a boolean vector that
       determines if a given element should be read from memory, and `other` is the
       element that should be returned on lane `i` when `mask[i] == 0`.
-      Stride is the distance between the beginning of contiguous memory chunks.
-      When performing a load of a block, the `stride` is the address difference between
-      the first elements of each row in bytes. Compiler tries to obtain the `stride`
-      when it converts to the buffer ops because it is important for optimizing
-      the cache memory access.
     }];
     let arguments = (ins
       Arg<TT_Ptr, "Global memory scalar base pointer to load from", [MemRead<GlobalMemory>]>:$ptr,
@@ -333,11 +327,6 @@ def BufferStoreOp : TT_AMDGPU_Op<"buffer_store", [
       are similar to a normal store , i.e., the `mask` is a boolean vector that
       determines if a given element should be written to memory, and `value` is the
       tensor of elements that should be written on lane `i` when `mask[i] == 1`.
-      Stride is the distance between the beginning of contiguous memory chunks.
-      When performing a block store, the `stride` is the address difference between
-      the first elements of each row in bytes. Compiler tries to obtain the `stride`
-      when it converts to the buffer ops because it is important for optimizing
-      the cache memory access.
     }];
     let arguments = (ins
       TT_Tensor:$value,
