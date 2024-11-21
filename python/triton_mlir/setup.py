@@ -1,5 +1,6 @@
 import os
 import platform
+import re
 import subprocess
 import sys
 from datetime import datetime
@@ -8,9 +9,17 @@ from typing import NamedTuple
 
 
 def get_version():
-    latest_commit = subprocess.check_output(
-        ["git", "rev-parse", "--short", "HEAD"], text=True
-    ).strip()
+    if os.environ.get("GITHUB_ACTIONS") == "true":
+        commit_msg = subprocess.check_output(
+            ["git", "log", "--oneline", "-n", "1"], text=True
+        )
+        base_commit = re.findall(r"Merge \w+ into (\w+)", commit_msg)
+        assert base_commit, "couldn't find base commit"
+        latest_commit = base_commit[0][:8]
+    else:
+        latest_commit = subprocess.check_output(
+            ["git", "merge-base", "origin/main", "HEAD"], text=True
+        ).strip()[:8]
     now = datetime.now()
     now = os.environ.get(
         "DATETIME", f"{now.year}{now.month:02}{now.day:02}{now.hour:02}"
@@ -18,15 +27,6 @@ def get_version():
     # in order for the wheels to be ordered chronologically
     # include the epoch seconds as a portion of the version
     return f"{now}+{latest_commit}"
-
-
-class Package(NamedTuple):
-    package: str
-    name: str
-    url: str
-    include_flag: str
-    lib_flag: str
-    syspath_var_name: str
 
 
 def get_base_dir():
@@ -63,28 +63,12 @@ def get_llvm_package_info():
                 # CentOS 7 (v2.17)
                 system_suffix = "centos-x64"
         else:
-            print(
+            raise Exception(
                 f"LLVM pre-compiled image is not available for {system}-{arch}. Proceeding with user-configured LLVM from source build."
             )
-            return Package(
-                "llvm",
-                "LLVM-C.lib",
-                "",
-                "LLVM_INCLUDE_DIRS",
-                "LLVM_LIBRARY_DIR",
-                "LLVM_SYSPATH",
-            )
     else:
-        print(
+        raise Exception(
             f"LLVM pre-compiled image is not available for {system}-{arch}. Proceeding with user-configured LLVM from source build."
-        )
-        return Package(
-            "llvm",
-            "LLVM-C.lib",
-            "",
-            "LLVM_INCLUDE_DIRS",
-            "LLVM_LIBRARY_DIR",
-            "LLVM_SYSPATH",
         )
     # use_assert_enabled_llvm = check_env_flag("TRITON_USE_ASSERT_ENABLED_LLVM", "False")
     # release_suffix = "assert" if use_assert_enabled_llvm else "release"
@@ -92,14 +76,11 @@ def get_llvm_package_info():
     with open(llvm_hash_path, "r") as llvm_hash_file:
         rev = llvm_hash_file.read(8)
     name = f"llvm-{rev}-{system_suffix}"
-    url = f"https://oaitriton.blob.core.windows.net/public/llvm-builds/{name}.tar.gz"
-    return Package(
-        "llvm", name, url, "LLVM_INCLUDE_DIRS", "LLVM_LIBRARY_DIR", "LLVM_SYSPATH"
-    )
+    return f"https://oaitriton.blob.core.windows.net/public/llvm-builds/{name}.tar.gz"
 
 
 if len(sys.argv) > 1 and sys.argv[1] == "--llvm-url":
-    print(get_llvm_package_info().url)
+    print(get_llvm_package_info())
     exit()
 
 
