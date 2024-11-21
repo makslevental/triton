@@ -94,33 +94,51 @@ jobs:
           
           ccache -z
           
-          export Python3_EXECUTABLE="$(which $python3_command)"
+          cmake_options=(
+            -S "$TRITON_SRC_DIR"
+            -B "$TRITON_BUILD_DIR"
+            
+            -DCMAKE_BUILD_TYPE=Release 
+            -DCMAKE_PREFIX_PATH="$LLVM_INSTALL_DIR" 
+            -DCMAKE_INSTALL_PREFIX="$TRITON_INSTALL_DIR" 
+           
+            -DCMAKE_C_VISIBILITY_PRESET=hidden 
+            -DCMAKE_CXX_VISIBILITY_PRESET=hidden 
+            -DCMAKE_VISIBILITY_INLINES_HIDDEN=ON 
           
-          cmake -GNinja \
-            -S $TRITON_SRC_DIR \
-            -B $TRITON_BUILD_DIR \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_PREFIX_PATH="$LLVM_INSTALL_DIR" \
-            -DCMAKE_C_VISIBILITY_PRESET=hidden \
-            -DCMAKE_CXX_VISIBILITY_PRESET=hidden \
-            -DCMAKE_VISIBILITY_INLINES_HIDDEN=ON \
-            -DPython3_EXECUTABLE="$Python3_EXECUTABLE" \
-            -DCMAKE_INSTALL_PREFIX="$TRITON_INSTALL_DIR" \
-            -DLLVM_ENABLE_LIBEDIT=OFF \
-            -DTRITON_BUILD_PYTHON_MODULE=OFF \
-            -DTRITON_BUILD_PROTON=OFF \
-            -DTRITON_CODEGEN_BACKENDS="amd;nvidia" \
-            -DTRITON_BUILD_MLIR_PYTHON_MODULE=ON
+            -DPython3_EXECUTABLE="$(which $python3_command)"
+          
+            # on AddLLVM.cmake has `PRE_BUILD` in it 
+            -DCMAKE_POLICY_DEFAULT_CMP0175=OLD
+        
+            -DTRITON_CODEGEN_BACKENDS="amd;nvidia" 
+            -DTRITON_BUILD_MLIR_PYTHON_MODULE=ON 
+            -DTRITON_BUILD_PROTON=OFF 
+            -DTRITON_BUILD_PYTHON_MODULE=OFF 
+            -DTRITON_BUILD_TUTORIALS=OFF 
+            -DTRITON_BUILD_UT=OFF
+          )
+          
+          # don't build a fat binary
+          if [[ "${{ matrix.os }}" == "macos" ]]; then
+              cmake_options+=(
+                -DCMAKE_OSX_ARCHITECTURES=${{ matrix.arch }} 
+              )
+          fi
+          
+          cmake "${cmake_options[@]}"
           cmake --build "$TRITON_BUILD_DIR" --target install
           
           ccache -s
           
+          # prevent universal wheels from being built for macos
+          if [[ "${{ matrix.os }}" == "macos" ]]; then
+            _PYTHON_HOST_PLATFORM=$($python3_command -c "import sysconfig; print(sysconfig.get_platform())")
+            export _PYTHON_HOST_PLATFORM=$(echo $_PYTHON_HOST_PLATFORM | sed 's/universal2/${{ matrix.arch }}/g')
+          fi
+          
           cp "$TRITON_SRC_DIR/python/triton_mlir/setup.py" "$TRITON_INSTALL_DIR/python_packages"
           pushd "$TRITON_INSTALL_DIR/python_packages"
-          # prevent universal wheels from being built for macos
-          _PYTHON_HOST_PLATFORM=$($python3_command -c "import sysconfig; print(sysconfig.get_platform())")
-          export OSX_DEPLOYMENT_TARGET="$(echo $_PYTHON_HOST_PLATFORM | cut -d "-" -f 2)"
-          export _PYTHON_HOST_PLATFORM="macosx-$OSX_DEPLOYMENT_TARGET-${{ matrix.arch }}"
           $python3_command -m pip wheel .
           popd
 
@@ -142,6 +160,7 @@ jobs:
           allowUpdates: true
           replacesArtifacts: true
           makeLatest: true
+          omitBody: true
 
       - name: Release current commit
         uses: ncipollo/release-action@v1.12.0
@@ -156,6 +175,7 @@ jobs:
           allowUpdates: true
           replacesArtifacts: true
           makeLatest: true
+          omitBody: true
           artifactErrorsFailBuild: true
 
       - name: "Save cache"
