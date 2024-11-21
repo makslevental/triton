@@ -90,7 +90,7 @@ jobs:
           export LLVM_INSTALL_DIR="$PWD/$LLVM_NAME"
           export TRITON_SRC_DIR="$PWD"
           export TRITON_BUILD_DIR="$PWD/triton-build"
-          export TRITON_INSTALL_DIR="$PWD/triton-install"
+          export TRITON_INSTALL_DIR="$PWD/triton-install/triton-install"
           
           ccache -z
           
@@ -139,20 +139,20 @@ jobs:
           
           cp "$TRITON_SRC_DIR/python/triton_mlir/setup.py" "$TRITON_INSTALL_DIR/python_packages"
           pushd "$TRITON_INSTALL_DIR/python_packages"
-          $python3_command -m pip wheel .
+          $python3_command -m pip wheel . -w "$TRITON_SRC_DIR/wheelhouse"
           popd
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: triton_mlir_${{ matrix.name }}_${{ matrix.python-version }}_artifact
-          path: triton-install/python_packages/triton_mlir*.whl
+          path: triton-install
           if-no-files-found: warn
 
       - name: Release current commit
         uses: ncipollo/release-action@v1.12.0
         with:
-          artifacts: "triton-install/python_packages/triton_mlir*.whl"
+          artifacts: "wheelhouse/triton_mlir*.whl"
           token: "${{ secrets.GITHUB_TOKEN }}"
           tag: "latest"
           name: "latest"
@@ -167,7 +167,7 @@ jobs:
         with:
           owner: makslevental
           repo: wheels
-          artifacts: "triton-install/python_packages/triton_mlir*.whl"
+          artifacts: "wheelhouse/triton_mlir*.whl"
           token: "${{ secrets.WHEELS_RELEASE }}"
           tag: "i"
           name: "i"
