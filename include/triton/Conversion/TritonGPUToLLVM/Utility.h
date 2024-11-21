@@ -475,7 +475,7 @@ inline Value getSharedMemoryBase(Location loc, RewriterBase &rewriter,
 // -----------------------------------------------------------------------
 
 // Convert each value, which is an int8 containing 2 packed mxfp4 values,
-// into 2 triton bf16 values
+// into 2 standalone bf16 values
 SmallVector<Value> convertMxfp4x2ToBf16x2(RewriterBase &rewriter, Location loc,
                                           ArrayRef<Value> values);
 
