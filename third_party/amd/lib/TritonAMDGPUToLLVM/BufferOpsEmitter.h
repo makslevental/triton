@@ -72,6 +72,8 @@ struct BufferEmitter {
   // Emit a predicated rocdl.raw.ptr.buffer.store
   void emitStore(Value rsrcDesc, Value offset, Value data, Value pred);
 
+  void emitAtomicFAdd(Value rsrcDesc, Value offset, Value data, Value pred);
+
 private:
   // Fill common buffer operation arguments.
   void fillCommonArgs(Type type, Value rsrcDesc, Value vOffsetElems, Value pred,
