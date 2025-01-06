@@ -98,7 +98,7 @@ jobs:
             -S "$TRITON_SRC_DIR"
             -B "$TRITON_BUILD_DIR"
             
-            -DCMAKE_BUILD_TYPE=Release 
+            -DCMAKE_BUILD_TYPE=TritonRelBuildWithAsserts 
             -DCMAKE_PREFIX_PATH="$LLVM_INSTALL_DIR" 
             -DCMAKE_INSTALL_PREFIX="$TRITON_INSTALL_DIR" 
            
@@ -141,6 +141,12 @@ jobs:
           pushd "$TRITON_INSTALL_DIR/python_packages"
           $python3_command -m pip wheel . -w "$TRITON_SRC_DIR/wheelhouse"
           popd
+
+      - name: "Test"
+        run: |
+          
+          $python3_command -m pip install pytest triton-mlir -f $PWD/wheelhouse
+          $python3_command -m pytest python/triton_mlir/test
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4

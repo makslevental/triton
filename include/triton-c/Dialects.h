@@ -15,9 +15,8 @@
 extern "C" {
 #endif
 
-MLIR_DECLARE_CAPI_DIALECT_REGISTRATION(Triton, triton);
-MLIR_DECLARE_CAPI_DIALECT_REGISTRATION(TritonGPU, triton_gpu);
-MLIR_DECLARE_CAPI_DIALECT_REGISTRATION(TritonAMDGPU, triton_amd_gpu);
+MLIR_CAPI_EXPORTED void
+tritonMlirRegisterTritonDialectsAndPasses(MlirDialectRegistry registry);
 
 #ifdef __cplusplus
 }
