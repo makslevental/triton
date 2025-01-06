@@ -102,8 +102,8 @@ runs:
       shell: bash
       run: |
         if [[ "${{ inputs.os }}" == "almalinux" ]]; then
-          echo "CC=/opt/rh/gcc-toolset-13/root/usr/bin/gcc" >> $GITHUB_ENV
-          echo "CXX=/opt/rh/gcc-toolset-13/root/usr/bin/g++" >> $GITHUB_ENV
+          echo "CC=/opt/rh/gcc-toolset-14/root/usr/bin/gcc" >> $GITHUB_ENV
+          echo "CXX=/opt/rh/gcc-toolset-14/root/usr/bin/g++" >> $GITHUB_ENV
         elif [[ "${{ inputs.os }}" == "ubuntu" ]]; then
           echo "CC=/usr/lib/llvm-18/bin/clang" >> $GITHUB_ENV
           echo "CXX=/usr/lib/llvm-18/bin/clang++" >> $GITHUB_ENV
