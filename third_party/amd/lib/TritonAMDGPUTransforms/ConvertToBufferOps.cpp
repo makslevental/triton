@@ -480,7 +480,7 @@ public:
       patterns.add<ConvertTritonAtomicRMWOpToBufferAtomicRMW>(
           context, assumptions, axisInfoAnalysis);
 
-    if (applyPatternsAndFoldGreedily(mod, std::move(patterns)).failed())
+    if (applyPatternsGreedily(mod, std::move(patterns)).failed())
       signalPassFailure();
   }
 };
