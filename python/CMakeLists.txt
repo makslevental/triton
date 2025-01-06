@@ -2,6 +2,20 @@ include(AddMLIRPython)
 
 add_compile_definitions("MLIR_PYTHON_PACKAGE_PREFIX=triton_mlir.")
 
+include_directories(${TRITON_SOURCE_DIR}/third_party)
+include_directories(${TRITON_BINARY_DIR}/third_party)
+include_directories(${TRITON_SOURCE_DIR}/third_party/amd/include)
+include_directories(${TRITON_BINARY_DIR}/third_party/amd/include)
+
+include_directories(${TRITON_SOURCE_DIR}/third_party/nvidia/include)
+include_directories(${TRITON_BINARY_DIR}/third_party/nvidia/include)
+# this is for tablegen
+include_directories(${TRITON_SOURCE_DIR}/third_party/nvidia/include/Dialect/NVGPU/IR)
+
+include_directories(${TRITON_SOURCE_DIR}/third_party/proton/include)
+include_directories(${TRITON_BINARY_DIR}/third_party/proton/include)
+# this is for tablegen
+include_directories(${TRITON_SOURCE_DIR}/third_party/proton/dialect/include/Dialect/Proton/IR)
 
 ################################################################################
 # Sources
@@ -22,8 +36,8 @@ declare_mlir_dialect_python_bindings(
   ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/triton_mlir"
   TD_FILE dialects/TritonGPUOps.td
   SOURCES
-    dialects/triton_gpu.py
-  DIALECT_NAME triton_gpu)
+    dialects/ttg.py
+  DIALECT_NAME ttg)
 
 declare_mlir_dialect_python_bindings(
   ADD_TO_PARENT TritonPythonSources
@@ -33,13 +47,41 @@ declare_mlir_dialect_python_bindings(
     dialects/amdgpu.py
   DIALECT_NAME amdgpu)
 
+declare_mlir_dialect_python_bindings(
+  ADD_TO_PARENT TritonPythonSources
+  ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/triton_mlir"
+  TD_FILE dialects/TritonNVGPUOps.td
+  SOURCES
+    dialects/nvgpu.py
+  DIALECT_NAME nvgpu)
+
+declare_mlir_dialect_python_bindings(
+  ADD_TO_PARENT TritonPythonSources
+  ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/triton_mlir"
+  TD_FILE dialects/TritonNVIDIAGPUOps.td
+  SOURCES
+    dialects/ttng.py
+  DIALECT_NAME ttng)
+
+declare_mlir_dialect_python_bindings(
+  ADD_TO_PARENT TritonPythonSources
+  ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/triton_mlir"
+  TD_FILE dialects/TritonProtonOps.td
+  SOURCES
+    dialects/proton.py
+  DIALECT_NAME proton)
+
 declare_mlir_python_extension(TritonPythonSources.Extension
   MODULE_NAME _site_initialize_0
   ADD_TO_PARENT TritonPythonSources
   SOURCES
     TritonExtension.cpp
+  PRIVATE_LINK_LIBS
+    LLVMSupport
   EMBED_CAPI_LINK_LIBS
     TritonCAPI
+    # MLIRCAPIConversion
+    MLIRCAPITransforms
 )
 
 ################################################################################
@@ -55,7 +97,7 @@ add_mlir_python_common_capi_library(TritonPythonCAPI
     TritonPythonSources
     # TODO: Remove this in favor of showing fine grained registration once
     # available.
-    MLIRPythonExtension.RegisterEverything
+    # MLIRPythonExtension.RegisterEverything
     MLIRPythonSources.Core
 )
 
@@ -68,7 +110,7 @@ add_mlir_python_modules(TritonPythonModules
   INSTALL_PREFIX "python_packages/triton_mlir"
   DECLARED_SOURCES
     TritonPythonSources
-    MLIRPythonExtension.RegisterEverything
+    # MLIRPythonExtension.RegisterEverything
     MLIRPythonSources.Core
     MLIRPythonSources.Core.Python
     MLIRPythonSources.Core.Python.Extras
