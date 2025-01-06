@@ -339,7 +339,7 @@ public:
 
     patterns.add<ConvertTritonLoadToBufferLoad>(context, assumptions);
     patterns.add<ConvertTritonStoreToBufferStore>(context, assumptions);
-    if (applyPatternsAndFoldGreedily(m, std::move(patterns)).failed())
+    if (applyPatternsGreedily(m, std::move(patterns)).failed())
       signalPassFailure();
   }
 };

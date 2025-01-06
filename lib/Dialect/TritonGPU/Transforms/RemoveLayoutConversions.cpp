@@ -1193,7 +1193,7 @@ public:
 
     RewritePatternSet cleanUpPatterns(context);
     ConvertLayoutOp::getCanonicalizationPatterns(cleanUpPatterns, context);
-    if (applyPatternsAndFoldGreedily(m, std::move(cleanUpPatterns)).failed()) {
+    if (applyPatternsGreedily(m, std::move(cleanUpPatterns)).failed()) {
       signalPassFailure();
     }
 
@@ -1225,7 +1225,7 @@ public:
     scf::ForOp::getCanonicalizationPatterns(cleanUpPatterns2, context);
     scf::IfOp::getCanonicalizationPatterns(cleanUpPatterns2, context);
     ConvertLayoutOp::getCanonicalizationPatterns(cleanUpPatterns2, context);
-    if (applyPatternsAndFoldGreedily(m, std::move(cleanUpPatterns2)).failed()) {
+    if (applyPatternsGreedily(m, std::move(cleanUpPatterns2)).failed()) {
       signalPassFailure();
     }
     LLVM_DEBUG({
