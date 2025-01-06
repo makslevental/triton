@@ -75,7 +75,7 @@ struct DecomposeUnsupportedConversions
 
     mlir::RewritePatternSet patterns(&getContext());
     patterns.add<DecomposeLocalLoadToDotOperand>(&getContext());
-    if (mlir::applyPatternsAndFoldGreedily(mod, std::move(patterns)).failed()) {
+    if (mlir::applyPatternsGreedily(mod, std::move(patterns)).failed()) {
       signalPassFailure();
     }
   }

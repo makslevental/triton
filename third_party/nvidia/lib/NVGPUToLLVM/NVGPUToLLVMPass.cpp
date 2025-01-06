@@ -609,7 +609,7 @@ public:
                  StoreMatrixOpPattern, ClusterArriveOpPattern, WGMMAOpPattern,
                  WGMMAWaitGroupOpPattern>(context);
 
-    if (applyPatternsAndFoldGreedily(mod, std::move(patterns)).failed())
+    if (applyPatternsGreedily(mod, std::move(patterns)).failed())
       signalPassFailure();
   }
 };
