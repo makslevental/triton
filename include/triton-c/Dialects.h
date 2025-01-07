@@ -18,6 +18,8 @@ extern "C" {
 MLIR_CAPI_EXPORTED void
 tritonMlirRegisterTritonDialectsAndPasses(MlirDialectRegistry registry);
 
+MLIR_CAPI_EXPORTED MlirTypeID tritonMlirPointerTypeTypeID();
+
 #ifdef __cplusplus
 }
 #endif

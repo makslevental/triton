@@ -6,13 +6,13 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir/Bindings/Python/PybindAdaptors.h"
+#include "mlir/Bindings/Python/NanobindAdaptors.h"
 #include "triton-c/Dialects.h"
+#include <nanobind/nanobind.h>
 
-using namespace mlir::python::adaptors;
-
-PYBIND11_MODULE(_site_initialize_0, m) {
+NB_MODULE(_site_initialize_0, m) {
   m.def("register_dialects", [](MlirDialectRegistry registry) {
     tritonMlirRegisterTritonDialectsAndPasses(registry);
   });
+  m.def("get_ptr_type_typeid", []() { return tritonMlirPointerTypeTypeID(); });
 }
