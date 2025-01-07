@@ -29,6 +29,7 @@ declare_mlir_dialect_python_bindings(
   TD_FILE dialects/TritonOps.td
   SOURCES
     dialects/tt.py
+    dialects/ttpp.py
   DIALECT_NAME tt)
 
 declare_mlir_dialect_python_bindings(
@@ -72,6 +73,7 @@ declare_mlir_dialect_python_bindings(
   DIALECT_NAME proton)
 
 declare_mlir_python_extension(TritonPythonSources.Extension
+  PYTHON_BINDINGS_LIBRARY nanobind
   MODULE_NAME _site_initialize_0
   ADD_TO_PARENT TritonPythonSources
   SOURCES

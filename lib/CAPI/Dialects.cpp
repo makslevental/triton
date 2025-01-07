@@ -44,7 +44,6 @@ void registerTestMembarPass();
 
 namespace {
 void registerTritonDialectsAndPasses(mlir::DialectRegistry &registry) {
-
   // clang-format off
   registry
       .insert<
@@ -220,4 +219,8 @@ void registerTritonDialectsAndPasses(mlir::DialectRegistry &registry) {
 
 void tritonMlirRegisterTritonDialectsAndPasses(MlirDialectRegistry registry) {
   registerTritonDialectsAndPasses(*unwrap(registry));
+}
+
+MlirTypeID tritonMlirPointerTypeTypeID() {
+  return wrap(mlir::triton::PointerType::getTypeID());
 }
