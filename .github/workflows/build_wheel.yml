@@ -105,7 +105,6 @@ jobs:
             -DCMAKE_C_VISIBILITY_PRESET=hidden 
             -DCMAKE_CXX_VISIBILITY_PRESET=hidden 
             -DCMAKE_VISIBILITY_INLINES_HIDDEN=ON 
-            -DCMAKE_MODULE_LINKER_FLAGS="-Wl,-U -Wl,_PyClassMethod_New"
           
             -DPython3_EXECUTABLE="$(which $python3_command)"
           
@@ -131,6 +130,7 @@ jobs:
           # don't build a fat binary
           if [[ "${{ matrix.os }}" == "macos" ]]; then
               cmake_options+=(
+                -DCMAKE_MODULE_LINKER_FLAGS="-Wl,-U -Wl,_PyClassMethod_New"
                 -DCMAKE_OSX_ARCHITECTURES=${{ matrix.arch }} 
               )
           fi
