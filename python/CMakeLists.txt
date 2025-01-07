@@ -79,9 +79,40 @@ declare_mlir_python_extension(TritonPythonSources.Extension
   PRIVATE_LINK_LIBS
     LLVMSupport
   EMBED_CAPI_LINK_LIBS
-    TritonCAPI
-    # MLIRCAPIConversion
+    MLIRCAPIIR
+#    MLIRCAPIExecutionEngine
+    MLIRCAPIDebug
+    MLIRCAPIInterfaces
     MLIRCAPITransforms
+    MLIRCAPITarget
+    # MLIRCAPIConversion
+    MLIRCAPIArith
+    MLIRCAPIAsync
+    MLIRCAPIControlFlow
+    MLIRCAPIEmitC
+    MLIRCAPIMath
+    MLIRCAPIMemRef
+    MLIRCAPIGPU
+    MLIRCAPIIRDL
+    MLIRCAPILLVM
+    MLIRCAPILinalg
+    MLIRCAPIMLProgram
+    MLIRCAPINVVM
+    MLIRCAPIROCDL
+    MLIRCAPISCF
+    MLIRCAPIShape
+    MLIRCAPISparseTensor
+    MLIRCAPIFunc
+    MLIRCAPISPIRV
+    MLIRCAPITensor
+    MLIRCAPITransformDialect
+    MLIRCAPITransformDialectTransforms
+    MLIRCAPIQuant
+    MLIRCAPIOpenMP
+    MLIRCAPIPDL
+    MLIRCAPIVector
+
+    TritonCAPI
 )
 
 ################################################################################
@@ -156,7 +187,43 @@ add_mlir_python_modules(TritonPythonModules
     MLIRPythonSources.Dialects.transform_pdl_extension
     MLIRPythonSources.Dialects.vector
     MLIRPythonSources.Dialects.vector_transform
-    MLIRPythonSources.ExecutionEngine
+    # MLIRPythonSources.ExecutionEngine
   COMMON_CAPI_LINK_LIBS
     TritonPythonCAPI
-  )
+)
+
+macro(remove_flag_from_target _target _flag)
+  get_target_property(_target_cxx_flags ${_target} COMPILE_OPTIONS)
+  if(_target_cxx_flags)
+    list(REMOVE_ITEM _target_cxx_flags ${_flag})
+    set_target_properties(${_target} PROPERTIES COMPILE_OPTIONS "${_target_cxx_flags}")
+  endif()
+  get_target_property(_target_cxx_flags ${_target} COMPILE_FLAGS)
+  if(_target_cxx_flags)
+    list(REMOVE_ITEM _target_cxx_flags ${_flag})
+    set_target_properties(${_target} PROPERTIES COMPILE_FLAGS "${_target_cxx_flags}")
+  endif()
+endmacro()
+
+set(tgts
+  _mlir
+  _mlirAsyncPasses
+  _mlirDialectsGPU
+  _mlirDialectsLinalg
+  _mlirDialectsLLVM
+  _mlirDialectsPDL
+  _mlirDialectsQuant
+  _mlirDialectsSparseTensor
+  _mlirDialectsTransform
+  # _mlirExecutionEngine
+  _mlirGPUPasses
+  _mlirLinalgPasses
+  _mlirSparseTensorPasses
+  _mlirTransformInterpreter
+  _site_initialize_0
+)
+
+foreach(tgt ${tgts})
+  remove_flag_from_target("TritonPythonModules.extension.${tgt}.dso" "-fPIC")
+endforeach()
+remove_flag_from_target(obj.TritonCAPI "-fPIC")
