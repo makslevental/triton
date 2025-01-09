@@ -1,4 +1,3 @@
-#include "mlir/Analysis/SliceAnalysis.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
@@ -9,7 +8,6 @@
 #include "mlir/IR/Verifier.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
-#include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "third_party/amd/include/Dialect/TritonAMDGPU/IR/Dialect.h"
 #include "triton/Analysis/Utility.h"
@@ -17,8 +15,6 @@
 #include "triton/Dialect/TritonGPU/IR/Dialect.h"
 #include "triton/Dialect/TritonGPU/Transforms/Utility.h"
 #include "llvm/ADT/TypeSwitch.h"
-#include <deque>
-#include <optional>
 
 #define GEN_PASS_CLASSES
 #include "TritonAMDGPUTransforms/Passes.h"
@@ -32,10 +28,9 @@ namespace ttg = mlir::triton::gpu;
 namespace tt = mlir::triton;
 
 namespace {
-template <typename F>
-bool verifyNonSmallerByAssumption(Value expr,
-                                  const DenseSet<Value> &assumptions,
-                                  F matchesOther) {
+bool verifyNonSmallerByAssumption(
+    Value expr, const DenseSet<Value> &assumptions,
+    const std::function<bool(Value)> &matchesOther) {
   for (Value assume : assumptions) {
     if (auto cmpOp = assume.getDefiningOp<arith::CmpIOp>()) {
       switch (cmpOp.getPredicate()) {
@@ -218,12 +213,7 @@ bool canUseBufferOps(Value ptr, const DenseSet<Value> &assumptions) {
     return false;
   LDBG("32 bit offset");
 
-  // 3. Check if the offset is non-negative
-  if (!verifyNonNegativeExpr(offset, assumptions))
-    return false;
-
-  LDBG("Non-negative");
-  return true;
+  return verifyNonNegativeExpr(offset, assumptions);
 }
 } // namespace
 
@@ -338,10 +328,12 @@ public:
       if (op->getOperand(0).getDefiningOp<arith::CmpIOp>())
         assumptions.insert(op->getOperand(0));
     });
+#ifndef NDEBUG
     LDBG("Number of assumptions found: " << assumptions.size());
     for (Value assume : assumptions) {
       LDBG("Assumption:" << assume);
     }
+#endif
 
     patterns.add<ConvertTritonLoadToBufferLoad>(context, assumptions);
     patterns.add<ConvertTritonStoreToBufferStore>(context, assumptions);
