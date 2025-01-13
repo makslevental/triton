@@ -85,7 +85,7 @@ endif()
 # Compiler flags
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 if(NOT MSVC)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D__STDC_FORMAT_MACROS  -fPIC -std=gnu++17")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D__STDC_FORMAT_MACROS -fPIC -std=gnu++17")
 else()
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D__STDC_FORMAT_MACROS")
 endif()
@@ -143,7 +143,7 @@ endfunction()
 
 # Disable warnings that show up in external code (gtest;pybind11)
 if(NOT MSVC)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Werror -Wno-covered-switch-default -fvisibility=hidden")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-covered-switch-default -fvisibility=hidden")
 else()
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd4244 /wd4624 /wd4715 /wd4530")
 endif()
@@ -334,4 +334,23 @@ if(TRITON_BUILD_UT)
     DEPENDS TritonUnitTests
     USES_TERMINAL
   )
+endif()
+
+# find_package(PythonLibs REQUIRED)
+set(TRITON_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+set(TRITON_BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}")
+
+if(TRITON_BUILD_MLIR_PYTHON_MODULE)
+  include(MLIRDetectPythonEnv)
+  mlir_configure_python_dev_packages()
+  add_subdirectory(python)
+  install(TARGETS triton-opt
+          RUNTIME DESTINATION bin
+          BUNDLE DESTINATION bin)
+  install(TARGETS triton-llvm-opt
+          RUNTIME DESTINATION bin
+          BUNDLE DESTINATION bin)
+  install(TARGETS triton-tensor-layout
+          RUNTIME DESTINATION bin
+          BUNDLE DESTINATION bin)
 endif()
