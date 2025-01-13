@@ -165,13 +165,11 @@ void registerTritonDialectsAndPasses(mlir::DialectRegistry &registry) {
   mlir::triton::registerConvertNVGPUToLLVMPass();
   mlir::triton::registerConvertTritonGPUToLLVMPass();
   mlir::triton::registerConvertTritonToTritonGPUPass();
-  mlir::triton::registerDecomposeUnsupportedNVIDIAConversions();
   mlir::triton::registerTritonGPUGlobalScratchAllocationPass();
 
   // TritonAMDGPUToLLVM passes
   mlir::triton::registerConvertTritonAMDGPUToLLVM();
   mlir::triton::registerConvertBuiltinFuncToLLVM();
-  mlir::triton::registerDecomposeUnsupportedAMDConversions();
   mlir::triton::registerOptimizeAMDLDSUsage();
 
   // TritonAMDGPUTransforms passes
