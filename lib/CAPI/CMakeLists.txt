@@ -38,6 +38,11 @@ add_mlir_public_c_api_library(TritonCAPI
   MLIRBuiltinToLLVMIRTranslation
   MLIRLLVMToLLVMIRTranslation
 
+  CIRCTSMT
+  CIRCTSMTToZ3LLVM
+  CIRCTVerif
+  CIRCTVerifToSMT
+
   DEPENDS
   TritonTableGen
   TritonTransformsIncGen

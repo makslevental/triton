@@ -190,6 +190,8 @@ add_mlir_python_modules(TritonPythonModules
     MLIRPythonSources.Dialects.vector
     MLIRPythonSources.Dialects.vector_transform
     # MLIRPythonSources.ExecutionEngine
+    CIRCTBindingsPythonSources.Dialects.smt
+    CIRCTBindingsPythonSources.Dialects.verif
   COMMON_CAPI_LINK_LIBS
     TritonPythonCAPI
 )

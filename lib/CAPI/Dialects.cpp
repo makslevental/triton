@@ -12,6 +12,9 @@
 #include "amd/include/TritonAMDGPUToLLVM/Passes.h"
 #include "amd/include/TritonAMDGPUTransforms/Passes.h"
 #include "amd/include/TritonAMDGPUTransforms/TritonGPUConversion.h"
+#include "circt/Conversion/VerifToSMT.h"
+#include "circt/Dialect/SMT/SMTDialect.h"
+#include "circt/Dialect/Verif/VerifDialect.h"
 #include "mlir/CAPI/IR.h"
 #include "mlir/CAPI/Registration.h"
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"
@@ -35,6 +38,12 @@
 #include "triton/Dialect/TritonNvidiaGPU/Transforms/Passes.h"
 #include "triton/Target/LLVMIR/Passes.h"
 
+inline void registerConvertVerifToSMT() {
+  mlir::registerPass([]() -> std::unique_ptr<::mlir::Pass> {
+    return circt::createConvertVerifToSMT();
+  });
+}
+
 namespace mlir::test {
 void registerTestAliasPass();
 void registerTestAlignmentPass();
@@ -47,6 +56,7 @@ void registerTritonDialectsAndPasses(mlir::DialectRegistry &registry) {
   // clang-format off
   registry
       .insert<
+              // upstream
               mlir::DLTIDialect,
               mlir::LLVM::LLVMDialect,
               mlir::NVVM::NVVMDialect,
@@ -88,6 +98,10 @@ void registerTritonDialectsAndPasses(mlir::DialectRegistry &registry) {
               mlir::tensor::TensorDialect,
               mlir::tosa::TosaDialect,
               mlir::transform::TransformDialect,
+              mlir::ub::UBDialect,
+              mlir::vector::VectorDialect,
+              mlir::x86vector::X86VectorDialect,
+              mlir::xegpu::XeGPUDialect,
 
               mlir::triton::TritonDialect,
               mlir::triton::amdgpu::TritonAMDGPUDialect,
@@ -96,10 +110,8 @@ void registerTritonDialectsAndPasses(mlir::DialectRegistry &registry) {
               mlir::triton::nvidia_gpu::TritonNvidiaGPUDialect,
               mlir::triton::proton::ProtonDialect,
 
-              mlir::ub::UBDialect,
-              mlir::vector::VectorDialect,
-              mlir::x86vector::X86VectorDialect,
-              mlir::xegpu::XeGPUDialect
+              circt::smt::SMTDialect,
+              circt::verif::VerifDialect
   >();
   // clang-format on
 
@@ -213,6 +225,8 @@ void registerTritonDialectsAndPasses(mlir::DialectRegistry &registry) {
   mlir::vector::registerBufferizableOpInterfaceExternalModels(registry);
   mlir::vector::registerSubsetOpInterfaceExternalModels(registry);
   mlir::vector::registerValueBoundsOpInterfaceExternalModels(registry);
+
+  ::registerConvertVerifToSMT();
 }
 
 } // namespace
