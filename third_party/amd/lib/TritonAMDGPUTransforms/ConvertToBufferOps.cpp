@@ -1,3 +1,5 @@
+#include "mlir/Analysis/DataFlow/DeadCodeAnalysis.h"
+#include "mlir/Analysis/DataFlow/IntegerRangeAnalysis.h"
 #include "mlir/Analysis/SliceAnalysis.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
@@ -32,10 +34,9 @@ namespace ttg = mlir::triton::gpu;
 namespace tt = mlir::triton;
 
 namespace {
-template <typename F>
-bool verifyNonSmallerByAssumption(Value expr,
-                                  const DenseSet<Value> &assumptions,
-                                  F matchesOther) {
+bool verifyNonSmallerByAssumption(
+    Value expr, const DenseSet<Value> &assumptions,
+    const std::function<bool(Value)> &matchesOther) {
   for (Value assume : assumptions) {
     if (auto cmpOp = assume.getDefiningOp<arith::CmpIOp>()) {
       switch (cmpOp.getPredicate()) {
@@ -218,12 +219,7 @@ bool canUseBufferOps(Value ptr, const DenseSet<Value> &assumptions) {
     return false;
   LDBG("32 bit offset");
 
-  // 3. Check if the offset is non-negative
-  if (!verifyNonNegativeExpr(offset, assumptions))
-    return false;
-
-  LDBG("Non-negative");
-  return true;
+  return verifyNonNegativeExpr(offset, assumptions);
 }
 } // namespace
 
@@ -316,6 +312,23 @@ private:
   DenseSet<Value> assumptions;
 };
 
+/// Gather ranges for all the values in `values`. Appends to the existing
+/// vector.
+static LogicalResult collectRanges(DataFlowSolver &solver, ValueRange values,
+                                   SmallVectorImpl<ConstantIntRanges> &ranges) {
+  for (Value val : values) {
+    auto *maybeInferredRange =
+        solver.lookupState<dataflow::IntegerValueRangeLattice>(val);
+    if (!maybeInferredRange || maybeInferredRange->getValue().isUninitialized())
+      return failure();
+
+    const ConstantIntRanges &inferredRange =
+        maybeInferredRange->getValue().getValue();
+    ranges.push_back(inferredRange);
+  }
+  return success();
+}
+
 class TritonAMDGPUConvertToBufferOpsPass
     : public TritonAMDGPUConvertToBufferOpsBase<
           TritonAMDGPUConvertToBufferOpsPass> {
@@ -326,21 +339,47 @@ public:
     MLIRContext *context = &getContext();
     RewritePatternSet patterns(context);
     ModuleOp m = getOperation();
-    // Collect assumptions in the function
-    DenseSet<Value> assumptions;
-    m.walk([&](LLVM::AssumeOp op) {
-      if (op->getOperand(0).getDefiningOp<arith::CmpIOp>())
-        assumptions.insert(op->getOperand(0));
-    });
-    LDBG("Number of assumptions found: " << assumptions.size());
-    for (Value assume : assumptions) {
-      LDBG("Assumption:" << assume);
-    }
 
-    patterns.add<ConvertTritonLoadToBufferLoad>(context, assumptions);
-    patterns.add<ConvertTritonStoreToBufferStore>(context, assumptions);
-    if (applyPatternsGreedily(m, std::move(patterns)).failed())
-      signalPassFailure();
+    DataFlowSolver solver;
+    solver.load<dataflow::DeadCodeAnalysis>();
+    solver.load<dataflow::IntegerRangeAnalysis>();
+    if (failed(solver.initializeAndRun(getOperation())))
+      return signalPassFailure();
+
+    m->walk<WalkOrder::PreOrder>([&solver](Operation *op) {
+      op->dump();
+      SmallVector<ConstantIntRanges> inputRange;
+      if (failed(collectRanges(solver, op->getOperands(), inputRange)))
+        return WalkResult::advance();
+      SmallVector<ConstantIntRanges> outputRange;
+      if (failed(collectRanges(solver, op->getResults(), outputRange)))
+        return WalkResult::advance();
+
+      if (inputRange.size())
+        llvm::errs() << "input range: " << inputRange[0] << "\n";
+      if (outputRange.size())
+        llvm::errs() << "output range: " << outputRange[0] << "\n";
+
+      return WalkResult::advance();
+    });
+
+    llvm::errs() << "\n\n";
+
+    // // Collect assumptions in the function
+    // DenseSet<Value> assumptions;
+    // m.walk([&](LLVM::AssumeOp op) {
+    //   if (op->getOperand(0).getDefiningOp<arith::CmpIOp>())
+    //     assumptions.insert(op->getOperand(0));
+    // });
+    // LDBG("Number of assumptions found: " << assumptions.size());
+    // for (Value assume : assumptions) {
+    //   LDBG("Assumption:" << assume);
+    // }
+    //
+    // patterns.add<ConvertTritonLoadToBufferLoad>(context, assumptions);
+    // patterns.add<ConvertTritonStoreToBufferStore>(context, assumptions);
+    // if (applyPatternsGreedily(m, std::move(patterns)).failed())
+    //   signalPassFailure();
   }
 };
 
