@@ -335,6 +335,13 @@ LogicalResult MakeRangeOp::verify() {
   return success();
 }
 
+void MakeRangeOp::inferResultRanges(ArrayRef<ConstantIntRanges> argRanges,
+                                    SetIntRangeFn setResultRange) {
+  setResultRange(getResult(),
+                 ConstantIntRanges::range({32, this->getStart(), true},
+                                          {32, this->getEnd(), true}, true));
+}
+
 //-- ReduceOp --
 static LogicalResult
 inferReduceReturnShape(RankedTensorType argTy, Type retEltTy, int axis,
@@ -565,6 +572,11 @@ OpFoldResult SplatOp::fold(FoldAdaptor adaptor) {
   auto shapedType = cast<ShapedType>(getType());
   auto ret = SplatElementsAttr::get(shapedType, ArrayRef<Attribute>(value));
   return ret;
+}
+
+void SplatOp::inferResultRanges(ArrayRef<ConstantIntRanges> argRanges,
+                                SetIntRangeFn setResultRange) {
+  setResultRange(getResult(), argRanges[0]);
 }
 
 //-- ExpandDimsOp --
@@ -1242,6 +1254,12 @@ LogicalResult ExperimentalTensormapCreateOp::verify() {
            << getElementStride().size() << " but expected " << rank;
   }
   return success();
+}
+
+// -- GetProgramIdOp --
+void GetProgramIdOp::inferResultRanges(ArrayRef<ConstantIntRanges> argRanges,
+                                       SetIntRangeFn setResultRange) {
+  setResultRange(getResult(), ConstantIntRanges::constant({32, 0, true}));
 }
 
 } // namespace triton
