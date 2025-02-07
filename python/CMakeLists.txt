@@ -17,6 +17,11 @@ include_directories(${TRITON_BINARY_DIR}/third_party/proton/include)
 # this is for tablegen
 include_directories(${TRITON_SOURCE_DIR}/third_party/proton/dialect/include/Dialect/Proton/IR)
 
+set(CMAKE_C_VISIBILITY_PRESET "hidden")
+set(CMAKE_CXX_VISIBILITY_PRESET "hidden")
+set(CMAKE_VISIBILITY_INLINES_HIDDEN ON)
+set(MLIR_BINDINGS_PYTHON_NB_DOMAIN "triton_mlir")
+
 ################################################################################
 # Sources
 ################################################################################
@@ -133,6 +138,7 @@ add_mlir_python_common_capi_library(TritonPythonCAPI
     # MLIRPythonExtension.RegisterEverything
     MLIRPythonSources.Core
 )
+target_link_libraries(TritonPythonCAPI PRIVATE TritonCAPI)
 
 ################################################################################
 # Instantiation of all Python modules
@@ -228,4 +234,4 @@ set(tgts
 foreach(tgt ${tgts})
   remove_flag_from_target("TritonPythonModules.extension.${tgt}.dso" "-fPIC")
 endforeach()
-remove_flag_from_target(obj.TritonCAPI "-fPIC")
+remove_flag_from_target(TritonCAPI "-fPIC")
