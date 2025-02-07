@@ -13,7 +13,7 @@ include_directories(${TRITON_BINARY_DIR}/third_party/nvidia/include)
 include_directories(${TRITON_SOURCE_DIR}/third_party/proton/include)
 include_directories(${TRITON_BINARY_DIR}/third_party/proton/include)
 
-add_mlir_public_c_api_library(TritonCAPI
+add_triton_library(TritonCAPI
   Dialects.cpp
   LINK_LIBS PUBLIC
   TritonIR
@@ -22,10 +22,12 @@ add_mlir_public_c_api_library(TritonCAPI
   TritonAnalysis
   TritonGPUTransforms
   TritonAMDGPUToLLVM
+  TritonAMDUtils
   TritonAMDGPUTransforms
   TritonAMDGPUDialectToLLVM
   TritonNVIDIAGPUToLLVM
   TritonTestAnalysis
+  TritonTestDialectTritonGPU
   NVGPUIR
   NVGPUToLLVM
 
@@ -49,6 +51,9 @@ add_mlir_public_c_api_library(TritonCAPI
   TritonNvidiaGPUTableGen
   TritonNvidiaGPUAttrDefsIncGen
   TritonNvidiaGPUTransformsIncGen
-  NVGPUConversionPassIncGen
-  TritonNVIDIAGPUConversionPassIncGen
+)
+
+target_compile_definitions(TritonCAPI
+  PRIVATE
+  -DMLIR_CAPI_BUILDING_LIBRARY=1
 )
