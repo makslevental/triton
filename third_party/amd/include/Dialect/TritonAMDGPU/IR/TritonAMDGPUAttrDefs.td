@@ -26,7 +26,6 @@
 
 include "mlir/IR/AttrTypeBase.td"
 include "triton/Dialect/Triton/IR/TritonInterfaces.td"
-include "TritonAMDGPUDialect.td"
 include "mlir/IR/EnumAttr.td"
 include "amd/include/Dialect/TritonAMDGPU/IR/TritonAMDGPUDialect.td"
 
