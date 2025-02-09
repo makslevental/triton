@@ -157,8 +157,8 @@ jobs:
       - name: "Test"
         run: |
           
-          $python3_command -m pip install pytest triton-mlir -f $PWD/wheelhouse
-          $python3_command -m pytest -s python/triton_mlir/test || true
+          $python3_command -m pip install pytest mlir-native-tools triton-mlir -f $PWD/wheelhouse
+          $python3_command -m pytest -s python/triton_mlir/test
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -202,11 +202,3 @@ jobs:
         with:
           path: ${{ steps.setup_base.outputs.cache-dir }}
           key: ${{ env.cache-key }}
-
-      - name: "Setup tmate session"
-        if: ${{ failure() }}
-        uses: mxschmitt/action-tmate@v3.18
-        with:
-          limit-access-to-actor: true
-          connect-timeout-seconds: 60
-          install-dependencies: ${{ startsWith(matrix.os, 'macos') || startsWith(matrix.os, 'windows') || startsWith(matrix.os, 'ubuntu') }}
