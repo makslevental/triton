@@ -307,7 +307,9 @@ def expand_dims(src: Value, axis, *, loc=None, ip=None):
     if loc is None:
         loc = get_user_code_loc()
     return TritonTensor(
-        maybe_cast(get_op_result_or_op_results(ExpandDimsOp(src, axis, loc=loc, ip=ip)))
+        maybe_cast_triton_tensor(
+            get_op_result_or_op_results(ExpandDimsOp(src, axis, loc=loc, ip=ip))
+        )
     )
 
 
@@ -560,7 +562,6 @@ def dot(
     b: TritonTensor,
     *,
     c: TritonTensor = None,
-    allow_tf32=True,
     loc=None,
     ip=None,
 ):
@@ -577,7 +578,6 @@ def dot(
         a,
         b,
         c,
-        allow_tf32,
         loc=loc,
         ip=ip,
     )
@@ -626,3 +626,124 @@ class T:
     @classproperty
     def float32(cls):
         return Ptr(_T.f32())
+
+    @classproperty
+    def p_i16(cls):
+        return ptr(_T.i16())
+
+    @classproperty
+    def p_i32(cls):
+        return ptr(_T.i32())
+
+    @classproperty
+    def p_i64(cls):
+        return ptr(_T.i64())
+
+    @classproperty
+    def p_f16(cls):
+        return ptr(_T.f16())
+
+    @classproperty
+    def p_f32(cls):
+        return ptr(_T.f32())
+
+    @classproperty
+    def p_f64(cls):
+        return ptr(_T.f64())
+
+    @classproperty
+    def p_bf16(cls):
+        return ptr(_T.bf16())
+
+    # matches python/triton/language/core.py
+    @classproperty
+    def void(cls):
+        return _T.none()
+
+    @classproperty
+    def int1(cls):
+        return _T.bool()
+
+    # note that triton thinks these are signed but they're actually signless
+    @classproperty
+    def int8(cls):
+        return _T.i8()
+
+    # @classproperty
+    def _int16(cls):
+        return _T.i16
+
+    # @classproperty
+    def _int32(cls):
+        return _T.i32
+
+    # @classproperty
+    def _int64(cls):
+        return _T.i64
+
+    @classproperty
+    def int16(cls):
+        return Ptr(_T.i16())
+
+    @classproperty
+    def int32(cls):
+        return Ptr(_T.i32())
+
+    @classproperty
+    def int64(cls):
+        return Ptr(_T.i64())
+
+    # triton maps both ui and i to i
+    @classproperty
+    def uint8(cls):
+        return _T.i8()
+
+    @classproperty
+    def uint16(cls):
+        return _T.i16()
+
+    @classproperty
+    def uint32(cls):
+        return _T.i32()
+
+    @classproperty
+    def uint64(cls):
+        return _T.i64()
+
+    @classproperty
+    def float8e5(cls):
+        return _T.f8E5M2()
+
+    @classproperty
+    def float8e4(cls):
+        return _T.f8E4M3()
+
+    @classproperty
+    def float8e4b15(cls):
+        return _T.f8E4M3B11FNUZ()
+
+    # _float16 = lambda: _T.f16
+    # _float32 = lambda: _T.f32
+    # _float64 = lambda: _T.f64
+    @classproperty
+    def float16(cls):
+        return Ptr(_T.f16())
+
+    @classproperty
+    def float32(cls):
+        return Ptr(_T.f32())
+
+    @classproperty
+    def float64(cls):
+        return Ptr(_T.f64())
+
+    @classproperty
+    def bfloat16(cls):
+        return _T.bf16()
+
+    # pointer types
+    @classproperty
+    def pi32(cls):
+        return ptr(_T.i32())
+
+    tensor = lambda *args, **kwargs: _T.tensor(*args, **kwargs)

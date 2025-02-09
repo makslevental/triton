@@ -1,7 +1,9 @@
 import pytest
-from triton_mlir._mlir_libs._mlir.ir import Type
+from triton_mlir.ir import Type
+from triton_mlir.dialects.tensor import empty
 from triton_mlir.dialects.ttpp import ptr, T, get_ptr_type, is_ptr
 from triton_mlir.extras.context import MLIRContext
+from triton_mlir.extras.testing import mlir_ctx as ctx
 
 pytest.mark.usefixtures("ctx")
 
@@ -34,7 +36,7 @@ def test_tensor_ptrs(ctx: MLIRContext):
     assert is_ptr(t_ptr)
     assert t_ptr.typeid == p_f32.typeid
 
-    t_f32_ptr = tensor(10, 10, t_ptr)
+    t_f32_ptr = T.tensor(10, 10, t_ptr)
     assert repr(t_f32_ptr) == "RankedTensorType(tensor<10x10x!tt.ptr<f32>>)"
     tt = empty((10, 10), t_ptr)
     assert tt.type == t_f32_ptr
@@ -72,4 +74,7 @@ def test_plus_ptrs(ctx: MLIRContext):
     assert pp_f64 == p_f64
 
     x = +++++++++T.int64
-    assert str(x) == "!tt.ptr<!tt.ptr<!tt.ptr<!tt.ptr<!tt.ptr<!tt.ptr<!tt.ptr<!tt.ptr<!tt.ptr<i64>>>>>>>>>"
+    assert (
+        str(x)
+        == "!tt.ptr<!tt.ptr<!tt.ptr<!tt.ptr<!tt.ptr<!tt.ptr<!tt.ptr<!tt.ptr<!tt.ptr<i64>>>>>>>>>"
+    )

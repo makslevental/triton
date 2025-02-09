@@ -45,5 +45,5 @@ def kernel_0123(arg0: +T.float32, arg1: +T.float32, arg2: +T.float32, arg3: T.in
 
 def test_vadd():
     kernel_0123.emit()
-    threading.local().ctx.module.operation.verify()
-    print(threading.local().ctx.module)
+    tls.ctx.module.operation.verify()
+    print(tls.ctx.module)
