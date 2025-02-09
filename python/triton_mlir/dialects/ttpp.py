@@ -1,4 +1,3 @@
-import re
 from typing import Optional, Sequence
 
 import triton_mlir.extras.dialects.ext.tensor
@@ -15,6 +14,7 @@ from triton_mlir.dialects.tt import (
     ReturnOp,
     CallOp,
     get_ptr_type_typeid,
+    PointerType,
 )
 from triton_mlir.extras import types as _T
 from triton_mlir.extras.dialects.ext.arith import Scalar, constant, _binary_op
@@ -38,89 +38,18 @@ from triton_mlir.ir import (
 )
 
 
-def ptr(type_or_val: Type | Value):
-    if isinstance(type_or_val, Value):
-        type_ = type_or_val.type
-    else:
-        type_ = type_or_val
-    if isinstance(type_, Type):
-        if ShapedType.isinstance(type_):
-            return Type.parse(f"!tt.ptr<{type_.element_type}>")
-        else:
-            return Type.parse(f"!tt.ptr<{type_}>")
-
-
-class Ptr(Type):
-    def __pos__(self):
-        return Ptr(ptr(self))
-
-
-_p_i16 = lambda: ptr(_T.i16())
-_p_i32 = lambda: ptr(_T.i32())
-_p_i64 = lambda: ptr(_T.i64())
-
-_p_f16 = lambda: ptr(_T.f16())
-_p_f32 = lambda: ptr(_T.f32())
-_p_f64 = lambda: ptr(_T.f64())
-_p_bf16 = lambda: ptr(_T.bf16())
-
-# matches python/triton/language/core.py
-_void = lambda: _T.none()
-_int1 = lambda: _T.bool()
-# note that triton thinks these are signed but they're actually signless
-_int8 = lambda: _T.i8()
-
-# _int16 = lambda: _T.i16
-# _int32 = lambda: _T.i32
-# _int64 = lambda: _T.i64
-
-_int16 = lambda: Ptr(_T.i16())
-_int32 = lambda: Ptr(_T.i32())
-_int64 = lambda: Ptr(_T.i64())
-
-# triton maps both ui and i to i
-_uint8 = lambda: _T.i8()
-_uint16 = lambda: _T.i16()
-_uint32 = lambda: _T.i32()
-_uint64 = lambda: _T.i64()
-_float8e5 = lambda: _T.f8E5M2()
-_float8e4 = lambda: _T.f8E4M3()
-_float8e4b15 = lambda: _T.f8E4M3B11FNUZ()
-
-# _float16 = lambda: _T.f16
-# _float32 = lambda: _T.f32
-# _float64 = lambda: _T.f64
-
-_float16 = lambda: Ptr(_T.f16())
-_float32 = lambda: Ptr(_T.f32())
-_float64 = lambda: Ptr(_T.f64())
-
-_bfloat16 = lambda: _T.bf16()
-# pointer types
-_pi32 = lambda: ptr(_T.i32())
-
-
 def is_ptr(o: Type | Value):
-    if isinstance(o, TritonPointer):
-        return True
     if not isinstance(o, (Type, Value)):
         return False
+    if isinstance(o, TritonPointer):
+        return True
     if isinstance(o, Value):
         o = o.type
     if ShapedType.isinstance(o):
         o = ShapedType(o).element_type
-    for p in [_p_f16(), _p_f32(), _p_f64(), _p_bf16()]:
-        if p.typeid == o.typeid:
-            return True
+    if o.typeid == get_ptr_type_typeid():
+        return True
     return False
-
-
-def get_ptr_type(ptr: Type):
-    assert isinstance(ptr, Type), f"{ptr=} is not an mlir type"
-    assert "!tt.ptr" in str(ptr), f"{ptr=} is not a tt.ptr"
-    ptr_type = re.findall(r"!tt\.ptr<(\w+)>", str(ptr))
-    assert len(ptr_type) == 1, f"couldn't find element in {ptr_type=}"
-    return Type.parse(ptr_type[0])
 
 
 @register_attribute_builder("TT_CacheModifierAttr")
@@ -505,7 +434,10 @@ def load(
     if loc is None:
         loc = get_user_code_loc()
     if isinstance(other, (int, float, bool)):
-        other = constant(other, type=get_ptr_type(ptr.type))
+        if RankedTensorType.isinstance(ptr.type):
+            other = constant(other, type=ptr.type.element_type.pointee_type)
+        else:
+            other = constant(other, type=ptr.type.pointee_type)
     if other is not None:
         if isinstance(other, Scalar):
             other = splat(other, ptr.shape)
@@ -593,7 +525,7 @@ def addptr(
     if loc is None:
         loc = get_user_code_loc()
     if isinstance(offset, int):
-        offset = constant(offset, type=get_ptr_type(ptr.type))
+        offset = constant(offset, type=ptr.type.pointee_type)
     if isinstance(offset, (Tensor, TritonTensor)) and not isinstance(
         ptr, (Tensor, TritonTensor)
     ):
@@ -618,42 +550,40 @@ class classproperty:
         return self.fget(owner)
 
 
+class PlusPtr(Type):
+    def __pos__(self):
+        return PointerType.of_pointee_type(self)
+
+
 class T:
-    @classproperty
-    def int32(cls):
-        return Ptr(_T.i32())
 
     @classproperty
-    def float32(cls):
-        return Ptr(_T.f32())
+    def i16(cls):
+        return PlusPtr(_T.i16())
 
     @classproperty
-    def p_i16(cls):
-        return ptr(_T.i16())
+    def i32(cls):
+        return PlusPtr(_T.i32())
 
     @classproperty
-    def p_i32(cls):
-        return ptr(_T.i32())
+    def i64(cls):
+        return PlusPtr(_T.i64())
 
     @classproperty
-    def p_i64(cls):
-        return ptr(_T.i64())
+    def f16(cls):
+        return PlusPtr(_T.f16())
 
     @classproperty
-    def p_f16(cls):
-        return ptr(_T.f16())
+    def f32(cls):
+        return PlusPtr(_T.f32())
 
     @classproperty
-    def p_f32(cls):
-        return ptr(_T.f32())
+    def f64(cls):
+        return PlusPtr(_T.f64())
 
     @classproperty
-    def p_f64(cls):
-        return ptr(_T.f64())
-
-    @classproperty
-    def p_bf16(cls):
-        return ptr(_T.bf16())
+    def bf16(cls):
+        return PlusPtr(_T.bf16())
 
     # matches python/triton/language/core.py
     @classproperty
@@ -669,81 +599,32 @@ class T:
     def int8(cls):
         return _T.i8()
 
-    # @classproperty
-    def _int16(cls):
-        return _T.i16
-
-    # @classproperty
-    def _int32(cls):
-        return _T.i32
-
-    # @classproperty
-    def _int64(cls):
-        return _T.i64
-
     @classproperty
     def int16(cls):
-        return Ptr(_T.i16())
+        return PlusPtr(_T.i16())
 
     @classproperty
     def int32(cls):
-        return Ptr(_T.i32())
+        return PlusPtr(_T.i32())
 
     @classproperty
     def int64(cls):
-        return Ptr(_T.i64())
+        return PlusPtr(_T.i64())
 
-    # triton maps both ui and i to i
-    @classproperty
-    def uint8(cls):
-        return _T.i8()
-
-    @classproperty
-    def uint16(cls):
-        return _T.i16()
-
-    @classproperty
-    def uint32(cls):
-        return _T.i32()
-
-    @classproperty
-    def uint64(cls):
-        return _T.i64()
-
-    @classproperty
-    def float8e5(cls):
-        return _T.f8E5M2()
-
-    @classproperty
-    def float8e4(cls):
-        return _T.f8E4M3()
-
-    @classproperty
-    def float8e4b15(cls):
-        return _T.f8E4M3B11FNUZ()
-
-    # _float16 = lambda: _T.f16
-    # _float32 = lambda: _T.f32
-    # _float64 = lambda: _T.f64
     @classproperty
     def float16(cls):
-        return Ptr(_T.f16())
+        return PlusPtr(_T.f16())
 
     @classproperty
     def float32(cls):
-        return Ptr(_T.f32())
+        return PlusPtr(_T.f32())
 
     @classproperty
     def float64(cls):
-        return Ptr(_T.f64())
+        return PlusPtr(_T.f64())
 
     @classproperty
     def bfloat16(cls):
         return _T.bf16()
-
-    # pointer types
-    @classproperty
-    def pi32(cls):
-        return ptr(_T.i32())
 
     tensor = lambda *args, **kwargs: _T.tensor(*args, **kwargs)
