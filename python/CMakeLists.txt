@@ -77,49 +77,64 @@ declare_mlir_dialect_python_bindings(
     dialects/proton.py
   DIALECT_NAME proton)
 
-declare_mlir_python_extension(TritonPythonSources.Extension
+set(embed_capi_link_libs
+  MLIRCAPIIR
+  #    MLIRCAPIExecutionEngine
+  MLIRCAPIDebug
+  MLIRCAPIInterfaces
+  MLIRCAPITransforms
+  MLIRCAPITarget
+  # MLIRCAPIConversion
+  MLIRCAPIArith
+  MLIRCAPIAsync
+  MLIRCAPIControlFlow
+  MLIRCAPIEmitC
+  MLIRCAPIMath
+  MLIRCAPIMemRef
+  MLIRCAPIGPU
+  MLIRCAPIIRDL
+  MLIRCAPILLVM
+  MLIRCAPILinalg
+  MLIRCAPIMLProgram
+  MLIRCAPINVVM
+  MLIRCAPIROCDL
+  MLIRCAPISCF
+  MLIRCAPIShape
+  MLIRCAPISparseTensor
+  MLIRCAPIFunc
+  MLIRCAPISPIRV
+  MLIRCAPITensor
+  MLIRCAPITransformDialect
+  MLIRCAPITransformDialectTransforms
+  MLIRCAPIQuant
+  MLIRCAPIOpenMP
+  MLIRCAPIPDL
+  MLIRCAPIVector
+  TritonCAPI
+)
+
+declare_mlir_python_extension(TritonPythonSources.site_initialize_0
   PYTHON_BINDINGS_LIBRARY nanobind
   MODULE_NAME _site_initialize_0
+  ADD_TO_PARENT TritonPythonSources
+  SOURCES
+    site_initialize_0.cpp
+  PRIVATE_LINK_LIBS
+    LLVMSupport
+  EMBED_CAPI_LINK_LIBS
+    ${embed_capi_link_libs}
+)
+
+declare_mlir_python_extension(TritonPythonSources.Extension
+  PYTHON_BINDINGS_LIBRARY nanobind
+  MODULE_NAME _TritonExtension
   ADD_TO_PARENT TritonPythonSources
   SOURCES
     TritonExtension.cpp
   PRIVATE_LINK_LIBS
     LLVMSupport
   EMBED_CAPI_LINK_LIBS
-    MLIRCAPIIR
-#    MLIRCAPIExecutionEngine
-    MLIRCAPIDebug
-    MLIRCAPIInterfaces
-    MLIRCAPITransforms
-    MLIRCAPITarget
-    # MLIRCAPIConversion
-    MLIRCAPIArith
-    MLIRCAPIAsync
-    MLIRCAPIControlFlow
-    MLIRCAPIEmitC
-    MLIRCAPIMath
-    MLIRCAPIMemRef
-    MLIRCAPIGPU
-    MLIRCAPIIRDL
-    MLIRCAPILLVM
-    MLIRCAPILinalg
-    MLIRCAPIMLProgram
-    MLIRCAPINVVM
-    MLIRCAPIROCDL
-    MLIRCAPISCF
-    MLIRCAPIShape
-    MLIRCAPISparseTensor
-    MLIRCAPIFunc
-    MLIRCAPISPIRV
-    MLIRCAPITensor
-    MLIRCAPITransformDialect
-    MLIRCAPITransformDialectTransforms
-    MLIRCAPIQuant
-    MLIRCAPIOpenMP
-    MLIRCAPIPDL
-    MLIRCAPIVector
-
-    TritonCAPI
+    ${embed_capi_link_libs}
 )
 
 ################################################################################

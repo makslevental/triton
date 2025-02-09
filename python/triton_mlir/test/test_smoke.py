@@ -13,3 +13,7 @@ def test_smoke():
     with Context() as ctx:
         layout = Attribute.parse(lyout)
         assert str(layout) == lyout
+
+
+if __name__ == "__main__":
+    test_smoke()

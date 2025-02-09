@@ -220,6 +220,26 @@ void tritonMlirRegisterTritonDialectsAndPasses(MlirDialectRegistry registry) {
   registerTritonDialectsAndPasses(*unwrap(registry));
 }
 
-MlirTypeID tritonMlirPointerTypeTypeID() {
+MlirTypeID tritonMlirPointerTypeGetTypeID() {
   return wrap(mlir::triton::PointerType::getTypeID());
+}
+
+bool tritonMlirTypeIsAPointerType(MlirType type) {
+  return isa<mlir::triton::PointerType>(unwrap(type));
+}
+
+bool tritonMlirTypeIsATensorOfPointer(MlirType type) {
+  auto type_ = unwrap(type);
+  return llvm::isa<mlir::RankedTensorType>(type_) &&
+         isa<mlir::triton::PointerType>(
+             llvm::cast<mlir::RankedTensorType>(type_).getElementType());
+}
+
+MlirType tritonMlirPointerTypeOfPointeeType(MlirType type, int addressSpace) {
+  return wrap(mlir::triton::PointerType::get(unwrap(type), addressSpace));
+}
+
+MlirType tritonMlirPointerTypeGetPointeeType(MlirType type) {
+  return wrap(
+      llvm::cast<mlir::triton::PointerType>(unwrap(type)).getPointeeType());
 }
