@@ -18,7 +18,16 @@ extern "C" {
 MLIR_CAPI_EXPORTED void
 tritonMlirRegisterTritonDialectsAndPasses(MlirDialectRegistry registry);
 
-MLIR_CAPI_EXPORTED MlirTypeID tritonMlirPointerTypeTypeID();
+MLIR_CAPI_EXPORTED MlirTypeID tritonMlirPointerTypeGetTypeID();
+
+MLIR_CAPI_EXPORTED bool tritonMlirTypeIsAPointerType(MlirType type);
+
+MLIR_CAPI_EXPORTED bool tritonMlirTypeIsATensorOfPointer(MlirType type);
+
+MLIR_CAPI_EXPORTED MlirType
+tritonMlirPointerTypeOfPointeeType(MlirType type, int addressSpace);
+
+MLIR_CAPI_EXPORTED MlirType tritonMlirPointerTypeGetPointeeType(MlirType type);
 
 #ifdef __cplusplus
 }
