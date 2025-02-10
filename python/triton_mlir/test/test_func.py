@@ -23,7 +23,7 @@ tls.ctx = RAIIMLIRContextModule()
 
 @ttpp.jit
 def kernel_0123(arg0: +T.float32, arg1: +T.float32, arg2: +T.float32, arg3: T.int32):
-    v0 = tt.get_program_id(axis="x")
+    v0 = tt.get_program_id(axis=tt.ProgramIDDim.X)
     c32 = arith.constant(64, T.int32)
     v1 = v0 * c32
     v2 = arange(0, 64)
@@ -33,10 +33,22 @@ def kernel_0123(arg0: +T.float32, arg1: +T.float32, arg2: +T.float32, arg3: T.in
     v6 = arith.cmpi("slt", v4, v5)
     v7 = splat(arg0, (64,))
     v8 = addptr(v7, v4)
-    v9 = load(v8, v6, cache="none", evict="normal", is_volatile=False)
+    v9 = load(
+        v8,
+        v6,
+        cache=tt.CacheModifier.NONE,
+        evict=tt.EvictionPolicy.NORMAL,
+        is_volatile=False,
+    )
     v10 = splat(arg1, (64,))
     v11 = addptr(v10, v4)
-    v12 = load(v11, v6, cache="none", evict="normal", is_volatile=False)
+    v12 = load(
+        v11,
+        v6,
+        cache=tt.CacheModifier.NONE,
+        evict=tt.EvictionPolicy.NORMAL,
+        is_volatile=False,
+    )
     v13 = arith.addf(v9, v12)
     v14 = splat(arg2, (64,))
     v15 = addptr(v14, v4)

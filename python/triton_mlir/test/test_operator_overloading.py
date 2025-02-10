@@ -50,7 +50,7 @@ def test_vadd(ctx: MLIRContext):
         output_ptr: +T.float32,
         n_elements: T.int32,
     ):
-        pid = tt.get_program_id(axis="x")
+        pid = tt.get_program_id(axis=tt.ProgramIDDim.X)
         block_size = arith.constant(BLOCK_SIZE, T.int32)
         block_start = pid * block_size
         offsets = block_start + ttpp.arange(0, BLOCK_SIZE)
@@ -105,7 +105,7 @@ def test_vadd_set_get(ctx: MLIRContext):
         output_ptr: +T.float32,
         n_elements: T.int32,
     ):
-        pid = tt.get_program_id(axis="x")
+        pid = tt.get_program_id(axis=tt.ProgramIDDim.X)
         block_size = arith.constant(BLOCK_SIZE, T.int32)
         block_start = pid * block_size
         offsets = block_start + ttpp.arange(0, BLOCK_SIZE)
@@ -175,7 +175,7 @@ def test_matmul(ctx: MLIRContext):
         stride_cm: T.int32,
         stride_cn: T.int32,
     ):
-        pid = tt.get_program_id(axis="x")
+        pid = tt.get_program_id(axis=tt.ProgramIDDim.X)
         num_pid_m = ttpp.cdiv(M, BLOCK_SIZE_M)
         num_pid_n = ttpp.cdiv(N, BLOCK_SIZE_N)
         num_pid_in_group = GROUP_SIZE_M * num_pid_n

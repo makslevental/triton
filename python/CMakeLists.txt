@@ -32,6 +32,8 @@ declare_mlir_dialect_python_bindings(
   ADD_TO_PARENT TritonPythonSources
   ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/triton_mlir"
   TD_FILE dialects/TritonOps.td
+  GEN_ENUM_BINDINGS_TD_FILE
+    "../../include/triton/Dialect/Triton/IR/TritonAttrDefs.td"
   SOURCES
     dialects/tt.py
     dialects/ttpp.py
@@ -41,6 +43,8 @@ declare_mlir_dialect_python_bindings(
   ADD_TO_PARENT TritonPythonSources
   ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/triton_mlir"
   TD_FILE dialects/TritonGPUOps.td
+  GEN_ENUM_BINDINGS_TD_FILE
+    "../../include/triton/Dialect/TritonGPU/IR/TritonGPUAttrDefs.td"
   SOURCES
     dialects/ttg.py
   DIALECT_NAME ttg)
@@ -49,6 +53,8 @@ declare_mlir_dialect_python_bindings(
   ADD_TO_PARENT TritonPythonSources
   ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/triton_mlir"
   TD_FILE dialects/TritonAMDGPUOps.td
+  GEN_ENUM_BINDINGS_TD_FILE
+    "../../third_party/amd/include/Dialect/TritonAMDGPU/IR/TritonAMDGPUAttrDefs.td"
   SOURCES
     dialects/amdgpu.py
   DIALECT_NAME amdgpu)
@@ -57,6 +63,8 @@ declare_mlir_dialect_python_bindings(
   ADD_TO_PARENT TritonPythonSources
   ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/triton_mlir"
   TD_FILE dialects/TritonNVGPUOps.td
+  GEN_ENUM_BINDINGS_TD_FILE
+    "../../third_party/nvidia/include/Dialect/NVGPU/IR/NVGPUAttrDefs.td"
   SOURCES
     dialects/nvgpu.py
   DIALECT_NAME nvgpu)
@@ -65,6 +73,8 @@ declare_mlir_dialect_python_bindings(
   ADD_TO_PARENT TritonPythonSources
   ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/triton_mlir"
   TD_FILE dialects/TritonNVIDIAGPUOps.td
+  GEN_ENUM_BINDINGS_TD_FILE
+    "../../include/triton/Dialect/TritonNvidiaGPU/IR/TritonNvidiaGPUAttrDefs.td"
   SOURCES
     dialects/ttng.py
   DIALECT_NAME ttng)
@@ -73,13 +83,15 @@ declare_mlir_dialect_python_bindings(
   ADD_TO_PARENT TritonPythonSources
   ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/triton_mlir"
   TD_FILE dialects/TritonProtonOps.td
+  GEN_ENUM_BINDINGS_TD_FILE
+    "../../third_party/amd/include/Dialect/TritonAMDGPU/IR/TritonAMDGPUAttrDefs.td"
   SOURCES
     dialects/proton.py
   DIALECT_NAME proton)
 
 set(embed_capi_link_libs
   MLIRCAPIIR
-  #    MLIRCAPIExecutionEngine
+  # MLIRCAPIExecutionEngine
   MLIRCAPIDebug
   MLIRCAPIInterfaces
   MLIRCAPITransforms
