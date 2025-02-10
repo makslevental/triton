@@ -342,14 +342,5 @@ set(TRITON_BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}")
 if(TRITON_BUILD_MLIR_PYTHON_MODULE)
   include(MLIRDetectPythonEnv)
   mlir_configure_python_dev_packages()
-  add_subdirectory(python)
-  install(TARGETS triton-opt
-          RUNTIME DESTINATION bin
-          BUNDLE DESTINATION bin)
-  install(TARGETS triton-llvm-opt
-          RUNTIME DESTINATION bin
-          BUNDLE DESTINATION bin)
-  install(TARGETS triton-tensor-layout
-          RUNTIME DESTINATION bin
-          BUNDLE DESTINATION bin)
+  add_subdirectory(python/triton_mlir)
 endif()
