@@ -11,6 +11,7 @@ from triton_mlir.extras.testing import mlir_ctx as ctx, filecheck, MLIRContext
 
 from triton_mlir.dialects import tt, ttpp
 from triton_mlir.dialects.ttpp import T
+from triton_mlir.runtime import make_ttir
 
 # noinspection PyUnresolvedReferences
 from triton_mlir.dialects.ttpp import splat, arange, addptr, load, store
@@ -18,7 +19,7 @@ from triton_mlir.dialects.ttpp import splat, arange, addptr, load, store
 pytest.mark.usefixtures("ctx")
 
 
-def test_vadd(ctx):
+def test_make_ttir(ctx):
     @ttpp.jit
     def kernel_0123(
         arg0: +T.float32, arg1: +T.float32, arg2: +T.float32, arg3: T.int32
@@ -54,6 +55,10 @@ def test_vadd(ctx):
         v15 = addptr(v14, v4)
         store(v15, v13, v6)
 
+        print(ctx.module)
+
     kernel_0123.emit()
     ctx.module.operation.verify()
     print(ctx.module)
+    mod = make_ttir(ctx.module)
+    print(mod)
