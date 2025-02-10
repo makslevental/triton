@@ -28,22 +28,12 @@ set(MLIR_BINDINGS_PYTHON_NB_DOMAIN "triton_mlir")
 
 declare_mlir_python_sources(TritonPythonSources)
 
-declare_mlir_python_sources(TritonPythonSources.Core.Python.Extras
-  ADD_TO_PARENT TritonPythonSources
-  ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/triton_mlir"
-  SOURCES
-    runtime.py
-)
-
 declare_mlir_dialect_python_bindings(
   ADD_TO_PARENT TritonPythonSources
   ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/triton_mlir"
   TD_FILE dialects/TritonOps.td
   GEN_ENUM_BINDINGS_TD_FILE
-    "../../include/triton/Dialect/Triton/IR/TritonAttrDefs.td"
-  SOURCES
-    dialects/tt.py
-    dialects/ttpp.py
+    "../../../include/triton/Dialect/Triton/IR/TritonAttrDefs.td"
   DIALECT_NAME tt)
 
 declare_mlir_dialect_python_bindings(
@@ -51,9 +41,7 @@ declare_mlir_dialect_python_bindings(
   ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/triton_mlir"
   TD_FILE dialects/TritonGPUOps.td
   GEN_ENUM_BINDINGS_TD_FILE
-    "../../include/triton/Dialect/TritonGPU/IR/TritonGPUAttrDefs.td"
-  SOURCES
-    dialects/ttg.py
+    "../../../include/triton/Dialect/TritonGPU/IR/TritonGPUAttrDefs.td"
   DIALECT_NAME ttg)
 
 declare_mlir_dialect_python_bindings(
@@ -61,9 +49,7 @@ declare_mlir_dialect_python_bindings(
   ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/triton_mlir"
   TD_FILE dialects/TritonAMDGPUOps.td
   GEN_ENUM_BINDINGS_TD_FILE
-    "../../third_party/amd/include/Dialect/TritonAMDGPU/IR/TritonAMDGPUAttrDefs.td"
-  SOURCES
-    dialects/amdgpu.py
+    "../../../third_party/amd/include/Dialect/TritonAMDGPU/IR/TritonAMDGPUAttrDefs.td"
   DIALECT_NAME amdgpu)
 
 declare_mlir_dialect_python_bindings(
@@ -71,9 +57,7 @@ declare_mlir_dialect_python_bindings(
   ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/triton_mlir"
   TD_FILE dialects/TritonNVGPUOps.td
   GEN_ENUM_BINDINGS_TD_FILE
-    "../../third_party/nvidia/include/Dialect/NVGPU/IR/NVGPUAttrDefs.td"
-  SOURCES
-    dialects/nvgpu.py
+    "../../../third_party/nvidia/include/Dialect/NVGPU/IR/NVGPUAttrDefs.td"
   DIALECT_NAME nvgpu)
 
 declare_mlir_dialect_python_bindings(
@@ -81,9 +65,7 @@ declare_mlir_dialect_python_bindings(
   ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/triton_mlir"
   TD_FILE dialects/TritonNVIDIAGPUOps.td
   GEN_ENUM_BINDINGS_TD_FILE
-    "../../include/triton/Dialect/TritonNvidiaGPU/IR/TritonNvidiaGPUAttrDefs.td"
-  SOURCES
-    dialects/ttng.py
+    "../../../include/triton/Dialect/TritonNvidiaGPU/IR/TritonNvidiaGPUAttrDefs.td"
   DIALECT_NAME ttng)
 
 declare_mlir_dialect_python_bindings(
@@ -91,9 +73,7 @@ declare_mlir_dialect_python_bindings(
   ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/triton_mlir"
   TD_FILE dialects/TritonProtonOps.td
   GEN_ENUM_BINDINGS_TD_FILE
-    "../../third_party/amd/include/Dialect/TritonAMDGPU/IR/TritonAMDGPUAttrDefs.td"
-  SOURCES
-    dialects/proton.py
+    "../../../third_party/amd/include/Dialect/TritonAMDGPU/IR/TritonAMDGPUAttrDefs.td"
   DIALECT_NAME proton)
 
 set(embed_capi_link_libs
@@ -136,8 +116,9 @@ declare_mlir_python_extension(TritonPythonSources.site_initialize_0
   PYTHON_BINDINGS_LIBRARY nanobind
   MODULE_NAME _site_initialize_0
   ADD_TO_PARENT TritonPythonSources
+  OUTPUT_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/triton_mlir/_mlir_libs"
   SOURCES
-    site_initialize_0.cpp
+    triton_mlir/site_initialize_0.cpp
   PRIVATE_LINK_LIBS
     LLVMSupport
   EMBED_CAPI_LINK_LIBS
@@ -148,8 +129,9 @@ declare_mlir_python_extension(TritonPythonSources.Extension
   PYTHON_BINDINGS_LIBRARY nanobind
   MODULE_NAME _TritonExtension
   ADD_TO_PARENT TritonPythonSources
+  OUTPUT_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/triton_mlir/_mlir_libs"
   SOURCES
-    TritonExtension.cpp
+    triton_mlir/TritonExtension.cpp
   PRIVATE_LINK_LIBS
     LLVMSupport
   EMBED_CAPI_LINK_LIBS
@@ -163,7 +145,7 @@ declare_mlir_python_extension(TritonPythonSources.Extension
 add_mlir_python_common_capi_library(TritonPythonCAPI
   INSTALL_COMPONENT TritonPythonModules
   INSTALL_DESTINATION python_packages/triton_mlir/_mlir_libs
-  OUTPUT_DIRECTORY "${TRITON_BINARY_DIR}/python_packages/triton_mlir/_mlir_libs"
+  OUTPUT_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/triton_mlir/_mlir_libs"
   RELATIVE_INSTALL_ROOT "../../.."
   DECLARED_SOURCES
     TritonPythonSources
@@ -179,7 +161,7 @@ target_link_libraries(TritonPythonCAPI PRIVATE TritonCAPI)
 ################################################################################
 
 add_mlir_python_modules(TritonPythonModules
-  ROOT_PREFIX "${TRITON_BINARY_DIR}/python_packages/triton_mlir"
+  ROOT_PREFIX "${CMAKE_CURRENT_LIST_DIR}/triton_mlir"
   INSTALL_PREFIX "python_packages/triton_mlir"
   DECLARED_SOURCES
     TritonPythonSources

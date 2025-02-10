@@ -225,13 +225,13 @@ MlirTypeID tritonMlirPointerTypeGetTypeID() {
 }
 
 bool tritonMlirTypeIsAPointerType(MlirType type) {
-  return isa<mlir::triton::PointerType>(unwrap(type));
+  return llvm::isa<mlir::triton::PointerType>(unwrap(type));
 }
 
 bool tritonMlirTypeIsATensorOfPointer(MlirType type) {
   auto type_ = unwrap(type);
   return llvm::isa<mlir::RankedTensorType>(type_) &&
-         isa<mlir::triton::PointerType>(
+         llvm::isa<mlir::triton::PointerType>(
              llvm::cast<mlir::RankedTensorType>(type_).getElementType());
 }
 

@@ -139,7 +139,7 @@ jobs:
           fi
           
           cmake "${cmake_options[@]}"
-          cmake --build "$TRITON_BUILD_DIR" --target install
+          cmake --build "$TRITON_BUILD_DIR" --target TritonPythonModules
           
           ccache -s
           
@@ -149,8 +149,7 @@ jobs:
             export _PYTHON_HOST_PLATFORM=$(echo $_PYTHON_HOST_PLATFORM | sed 's/universal2/${{ matrix.arch }}/g')
           fi
           
-          cp "$TRITON_SRC_DIR/python/triton_mlir/setup.py" "$TRITON_INSTALL_DIR/python_packages"
-          pushd "$TRITON_INSTALL_DIR/python_packages"
+          pushd "$TRITON_SRC_DIR/python/triton_mlir"
           $python3_command -m pip wheel . -w "$TRITON_SRC_DIR/wheelhouse"
           popd
 
