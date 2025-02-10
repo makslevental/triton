@@ -29,6 +29,8 @@ tritonMlirPointerTypeOfPointeeType(MlirType type, int addressSpace);
 
 MLIR_CAPI_EXPORTED MlirType tritonMlirPointerTypeGetPointeeType(MlirType type);
 
+MLIR_CAPI_EXPORTED bool hasMatrixCoreFeature(MlirStringRef arch);
+
 #ifdef __cplusplus
 }
 #endif
