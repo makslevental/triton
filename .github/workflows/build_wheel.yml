@@ -160,6 +160,12 @@ jobs:
           $python3_command -m pip install pytest mlir-native-tools triton-mlir -f $PWD/wheelhouse
           $python3_command -m pytest -s python/triton_mlir/test
 
+      - name: "Test HIP"
+        if: ${{ matrix.os != 'macos' }}
+        run: |
+          
+          $python3_command -m pip install hip-python -i https://test.pypi.org/simple
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
