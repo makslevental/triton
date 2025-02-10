@@ -28,6 +28,13 @@ set(MLIR_BINDINGS_PYTHON_NB_DOMAIN "triton_mlir")
 
 declare_mlir_python_sources(TritonPythonSources)
 
+declare_mlir_python_sources(TritonPythonSources.Core.Python.Extras
+  ADD_TO_PARENT TritonPythonSources
+  ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/triton_mlir"
+  SOURCES
+    runtime.py
+)
+
 declare_mlir_dialect_python_bindings(
   ADD_TO_PARENT TritonPythonSources
   ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/triton_mlir"
