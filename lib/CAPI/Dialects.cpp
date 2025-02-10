@@ -10,6 +10,7 @@
 
 #include "amd/include/Dialect/TritonAMDGPU/IR/Dialect.h"
 #include "amd/include/TritonAMDGPUToLLVM/Passes.h"
+#include "amd/include/TritonAMDGPUToLLVM/TargetUtils.h"
 #include "amd/include/TritonAMDGPUTransforms/Passes.h"
 #include "amd/include/TritonAMDGPUTransforms/TritonGPUConversion.h"
 #include "mlir/CAPI/IR.h"
@@ -242,4 +243,17 @@ MlirType tritonMlirPointerTypeOfPointeeType(MlirType type, int addressSpace) {
 MlirType tritonMlirPointerTypeGetPointeeType(MlirType type) {
   return wrap(
       llvm::cast<mlir::triton::PointerType>(unwrap(type)).getPointeeType());
+}
+
+bool hasMatrixCoreFeature(MlirStringRef arch) {
+  using mlir::triton::AMD::ISAFamily;
+  switch (mlir::triton::AMD::deduceISAFamily(unwrap(arch).str())) {
+  case ISAFamily::CDNA3:
+  case ISAFamily::CDNA2:
+  case ISAFamily::CDNA1:
+  case ISAFamily::RDNA3:
+    return true;
+  default:
+    return false;
+  }
 }

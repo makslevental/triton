@@ -1,6 +1,13 @@
+import os
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Tuple, Any
+
 from triton_mlir.extras.runtime.passes import Pipeline
 from triton_mlir.passmanager import PassManager
 from triton_mlir.ir import Module
+from triton_mlir.dialects.tt import has_matrix_core_feature, translate_to_llvmir
+import llvm
 
 
 class TritonPipeline(Pipeline):
@@ -563,10 +570,93 @@ class TritonPipeline(Pipeline):
             num_stages: Number of Pipeline stages
             prefetch: Enable prefetch from shared memory
         """
-        self.add_pass(
-            "tritonamdgpu-stream-pipeline", num_stages=num_stages, prefetch=prefetch
+        self._pipeline.append(
+            f"tritonamdgpu-stream-pipeline{{ {num_stages=} prefetch={int(prefetch)} }}"
         )
         return self
+
+
+@dataclass(frozen=True)
+class HIPOptions:
+    num_warps: int = 4
+    waves_per_eu: int = 1
+    num_stages: int = 2
+    num_ctas: int = 1
+    extern_libs: dict = None
+    cluster_dims: tuple = (1, 1, 1)
+    debug: bool = False
+    sanitize_overflow: bool = True
+    arch: str = None
+    supported_fp8_dtypes: Tuple[str] = ("fp8e5",)
+    deprecated_fp8_dtypes: Tuple[str] = ()
+    default_dot_input_precision: str = "ieee"
+    allowed_dot_input_precisions: Tuple[str] = ("ieee",)
+    enable_fp_fusion: bool = True
+    launch_cooperative_grid: bool = False
+    matrix_instr_nonkdim: int = 0
+    kpack: int = 1
+    allow_flush_denorm: bool = False
+    max_num_imprecise_acc_default: int = 0
+    backend_name: str = "hip"
+
+    # The following option provides hints to the AMDGPU backend regarding instruction scheduling
+    # for all `tt.dot` operations in a kernel. The "none" variant preserves the default
+    # instruction scheduling of the AMDGPU backend which aims at maximizing occupancy.
+    # The option is experimental and may change at any time regarding its semantics and/or may
+    # be gone entirely anytime.
+    #
+    # Current experimental scheduling variants:
+    #
+    # llvm-iglp-0: injects `llvm.amdgcn.iglp_opt` intrinsic call with value `0` to the GEMM's
+    #              k-loop; i.e., "interleave DS and MFMA instructions for small GEMM kernels".
+    # llvm-iglp-1: injects `llvm.amdgcn.iglp_opt` intrinsic call with value `1` to the GEMM's
+    #              k-loop; i.e., "interleave DS and MFMA instructions for single wave small
+    #              GEMM kernels.".
+    # local-prefetch: implements instruction scheduling similar to the one from the ROCm Composable
+    #                 Kernel library. Note, this variant requires the use of buffer load/store ops
+    #                 and a special software pipelining style - i.e., 1x LDS and 1x register
+    #                 prefetch buffers for each GEMM tile.
+    instruction_sched_variant: str = "none"
+
+    def __post_init__(self):
+        warp_size = (
+            32
+            if "gfx10" in self.arch or "gfx11" in self.arch or "gfx12" in self.arch
+            else 64
+        )
+        object.__setattr__(self, "warp_size", warp_size)
+        assert (
+            self.num_warps > 0 and (self.num_warps & (self.num_warps - 1)) == 0
+        ), "num_warps must be a power of 2"
+
+
+def parse_options(target_arch, **opts) -> HIPOptions:
+    args = {"arch": os.getenv("TRITON_OVERRIDE_ARCH", target_arch)}
+
+    # Enable XF32 (TF32) for CDNA3 GPUs
+    if target_arch in ("gfx940", "gfx941", "gfx942"):
+        allowed_dot_input_precisions = set(HIPOptions.allowed_dot_input_precisions)
+        allowed_dot_input_precisions.update({"tf32"})
+        args["allowed_dot_input_precisions"] = tuple(
+            sorted(allowed_dot_input_precisions)
+        )
+
+    if "supported_fp8_dtypes" not in opts:
+        supported_fp8_dtypes = set(HIPOptions.supported_fp8_dtypes)
+        if target_arch in ("gfx940", "gfx941", "gfx942"):
+            supported_fp8_dtypes.update({"fp8e4nv", "fp8e4b8", "fp8e5b16"})
+        args["supported_fp8_dtypes"] = tuple(sorted(supported_fp8_dtypes))
+
+    if "enable_fp_fusion" not in opts:
+        args["enable_fp_fusion"] = os.getenv("TRITON_DEFAULT_FP_FUSION", "1") == "1"
+    args.update(
+        {
+            k: opts[k]
+            for k in HIPOptions.__dataclass_fields__.keys()
+            if k in opts and opts[k] is not None
+        }
+    )
+    return HIPOptions(**args)
 
 
 def make_ttir(mod: Module):
@@ -587,35 +677,36 @@ def make_ttir(mod: Module):
     return mod
 
 
-def make_ttgir(mod: Module, options):
-    pm.enable_debug()
-    passes.ttir.add_convert_to_ttgpuir(
-        pm,
-        f"hip:{options.arch}",
-        options.num_warps,
-        options.warp_size,
-        options.num_ctas,
+def make_ttgir(mod: Module, options: HIPOptions):
+    p = TritonPipeline().convert_triton_to_tritongpu(
+        num_warps=options.num_warps,
+        threads_per_warp=options.num_warps,
+        num_ctas=options.num_ctas,
+        target=f"hip:{options.arch}",
     )
-    pm.run(mod)
-    pm = ir.pass_manager(mod.context)
-    pm.enable_debug()
-    passes.ttgpuir.add_coalesce(pm)
-    passes.ttgpuir.add_remove_layout_conversions(pm)
-    passes.ttgpuir.add_optimize_thread_locality(pm)
-    amd.passes.ttgpuir.add_accelerate_matmul(
-        pm, options.arch, options.matrix_instr_nonkdim, options.kpack
+    pm = PassManager.parse(p.materialize())
+    pm.run(mod.operation)
+    p = (
+        TritonPipeline()
+        .tritongpu_coalesce()
+        .tritongpu_remove_layout_conversions()
+        .tritongpu_optimize_thread_locality()
+        .tritonamdgpu_accelerate_matmul(
+            arch_generation_name=options.arch,
+            matrix_instruction_size=options.matrix_instr_nonkdim,
+            kPack=options.kpack,
+        )
+        .tritongpu_remove_layout_conversions()
+        .tritonamdgpu_optimize_epilogue()
+        .tritongpu_optimize_dot_operands(hoist_layout_conversion=True)
     )
-    passes.ttgpuir.add_remove_layout_conversions(pm)
-    amd.passes.ttgpuir.add_optimize_epilogue(pm)
-    passes.ttgpuir.add_optimize_dot_operands(pm, True)
 
     stream_prefetch = os.getenv("TRITON_HIP_STREAM_PREFETCH", "0") == "1"
-
     # The `local-prefetch` scheduling variant requires turning on buffer ops.
     if options.instruction_sched_variant == "local-prefetch":
         stream_prefetch = True
 
-    if amd.has_matrix_core_feature(options.arch):
+    if has_matrix_core_feature(options.arch):
         assert options.num_stages != 0, (
             "Triton AMD backend pipeliner has been updated. "
             "We used to trigger software pipelining with "
@@ -623,50 +714,55 @@ def make_ttgir(mod: Module, options):
             "please update to use num_stages == 2 for "
             "equivalent behavior in the past."
         )
-        amd.passes.ttgpuir.add_stream_pipeline(pm, options.num_stages, stream_prefetch)
-        passes.common.add_canonicalizer(pm)
+        p = p.tritonamdgpu_stream_pipeline(
+            num_stages=options.num_stages, prefetch=stream_prefetch
+        ).canonicalize()
     if options.instruction_sched_variant.lower() != "none":
-        amd.passes.ttgpuir.insert_instruction_sched_hints(
-            pm, options.instruction_sched_variant
+        p = p.triton_amdgpu_insert_instruction_sched_hints(
+            variant=options.instruction_sched_variant
         )
-    passes.ttgpuir.add_optimize_dot_operands(pm, True)
-    passes.ttgpuir.add_remove_layout_conversions(pm)
-    passes.ttgpuir.add_reduce_data_duplication(pm)
-    if amd.has_matrix_core_feature(options.arch):
-        amd.passes.ttgpuir.add_reorder_instructions(pm)
+    p = (
+        p.tritongpu_optimize_dot_operands(hoist_layout_conversion=True)
+        .tritongpu_remove_layout_conversions()
+        .tritongpu_reduce_data_duplication()
+    )
+    if has_matrix_core_feature(options.arch):
+        p = p.tritonamdgpu_reorder_instructions()
         use_block_pingpong = os.getenv("TRITON_HIP_USE_BLOCK_PINGPONG", "0") == "1"
         if use_block_pingpong and options.num_stages == 2:
-            amd.passes.ttgpuir.add_block_pingpong(pm)
+            p = p.tritonamdgpu_block_pingpong()
 
     use_buffer_ops = os.environ.get("AMDGCN_USE_BUFFER_OPS", "0") == "1"
     if use_buffer_ops:
-        amd.passes.ttgpuir.add_canonicalize_pointers(pm)
-        passes.common.add_canonicalizer(pm)
-        amd.passes.ttgpuir.add_convert_to_buffer_ops(pm, options.arch)
-    passes.common.add_canonicalizer(pm)
-    passes.common.add_cse(pm)
-    passes.common.add_symbol_dce(pm)
-    pm.run(mod)
+        p = (
+            p.tritonamdgpu_canonicalize_pointers()
+            .canonicalize()
+            .tritonamdgpu_convert_buffer_ops(arch_generation_name=options.arch)
+        )
+    p = p.canonicalize().cse().symbol_dce()
+    pm = PassManager.parse(p.materialize())
+    pm.run(mod.operation)
     return mod
 
 
-def make_llir(src, metadata, options):
-    mod = src
+def make_llir(mod, options: HIPOptions):
+    # # Get some metadata
+    # metadata["shared"] = mod.get_int_attr("ttg.shared")
+
     # TritonGPU -> LLVM-IR (MLIR)
-    pm = ir.pass_manager(mod.context)
-    pm.enable_debug()
-    amd.passes.ttgpuir.add_decompose_unsupported_conversions(pm, options.arch)
+    p = TritonPipeline().decompose_unsupported_amd_conversions(options.arch)
     # custom_lds_size is an experimental parameter that defines amount of LDS available
     # for one thread block. Measured in bytes.
     #
     # If custom_lds_size = 0, pass will consider all LDS is available for one threads block,
     # LDS size is determined by provided arch name.
     custom_lds_size = 0
-    amd.passes.ttgpuir.add_optimize_lds_usage(pm, options.arch, custom_lds_size)
-    passes.convert.add_scf_to_cf(pm)
-    passes.convert.add_index_to_llvmir(pm)
-
-    passes.ttgpuir.add_allocate_shared_memory(pm)
+    p = (
+        p.optimize_amd_lds_usage(options.arch, custom_lds_size)
+        .convert_scf_to_cf()
+        .convert_index_to_llvm()
+        .allocate_shared_memory()
+    )
     ## __HIP_FTZ is used to control the denorm flushing behavior of exp2 op as follows:
     ## 1. If __HIP_FTZ = 1, exp2 flushes denorms in input and output regardless
     ##    of the value of kernel arg `allow_flush_denorm`.
@@ -675,29 +771,35 @@ def make_llir(src, metadata, options):
     ## 3. __HIP_FTZ is default to 1 and not exposed as a kernel argument.
     ##    For now it is used as a controller for developers only.
     __HIP_FTZ = True
-    amd.passes.ttgpuir.add_to_llvmir(pm, options.arch, __HIP_FTZ)
-    passes.common.add_canonicalizer(pm)
-    passes.common.add_cse(pm)
+    p = (
+        p.convert_triton_amdgpu_to_llvm(arch=options.arch, ftz=__HIP_FTZ)
+        .canonicalize()
+        .cse()
+        .convert_cf_to_llvm()
+        .convert_arith_to_llvm()
+        .canonicalize()
+        .cse()
+        .symbol_dce()
+    )
 
-    passes.convert.add_cf_to_llvmir(pm)
-    passes.convert.add_arith_to_llvmir(pm)
-    passes.common.add_canonicalizer(pm)
-    passes.common.add_cse(pm)
-    passes.common.add_symbol_dce(pm)
     if options.instruction_sched_variant.lower() != "none":
-        amd.passes.ttgpuir.lower_instruction_sched_hints(
-            pm, options.arch, options.num_stages
+        p = p.triton_amdgpu_lower_insert_instruction_sched_hints(
+            arch=options.arch, num_stages=options.num_stages
         )
     if os.environ.get("TRITON_DISABLE_LINE_INFO", "0") == "0":
-        passes.llvmir.add_di_scope(pm)
-    amd.passes.ttgpuir.add_builtin_func_to_llvmir(pm, __HIP_FTZ)
-    pm.run(mod)
+        p = p.ensure_debug_info_scope_on_llvm_func()
+    p = p.convert_builtin_func_to_llvm(__HIP_FTZ)
+    pm = PassManager.parse(p.materialize())
+    print(pm)
+    pm.run(mod.operation)
 
     # LLVM-IR (MLIR) -> LLVM-IR (LLVM)
-    llvm.init_targets()
-    context = llvm.context()
-    llvm_mod = llvm.to_module(mod, context)
-    amd.attach_target_triple(llvm_mod)
+    llvm.initialize_all_targets()
+    context = llvm.context_create()
+    llvm_mod = translate_to_llvmir(mod, context)
+    llvm.set_target(llvm_mod, "amdgcn-amd-amdhsa")
+    return llvm_mod
+
     target_features = ""
     if os.environ.get("TRITON_ENABLE_ASAN", "0") == "1":
         target_features = "+xnack"
@@ -759,9 +861,6 @@ def make_llir(src, metadata, options):
     llvm.optimize_module(
         llvm_mod, llvm.OPTIMIZE_O3, options.arch, "", [], options.enable_fp_fusion
     )
-
-    # Get some metadata
-    metadata["shared"] = src.get_int_attr("ttg.shared")
 
     amd.cleanup_bitcode_metadata(llvm_mod)
     # Disable inlining of print related functions,
