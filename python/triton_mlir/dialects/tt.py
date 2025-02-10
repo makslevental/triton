@@ -3,4 +3,5 @@
 #  SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 from ._tt_ops_gen import *
+from ._tt_enum_gen import *
 from .._mlir_libs._TritonExtension import *
