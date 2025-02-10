@@ -52,95 +52,91 @@ def is_ptr(o: Type | Value):
     return False
 
 
-@register_attribute_builder("TT_CacheModifierAttr")
-def _tT_CacheModifierAttr(cache_modifier: str | Attribute, context: Context):
-    cache_modifiers = {
-        "none": 1,
-        "ca": 2,
-        "g": 3,
-    }
-    if isinstance(cache_modifier, Attribute):
-        return cache_modifier
-    assert (
-        cache_modifier in cache_modifiers
-    ), f"cache_modifier {cache_modifier} not in cache_modifiers"
-    return IntegerAttr.get(
-        IntegerType.get_signless(32, context=context), cache_modifiers[cache_modifier]
-    )
+class _classproperty:
+    def __init__(self, func):
+        self.fget = func
+
+    def __get__(self, instance, owner):
+        return self.fget(owner)
 
 
-@register_attribute_builder("TT_EvictionPolicyAttr")
-def _tT_EvictionPolicyAttr(eviction_policy: str | Attribute, context: Context):
-    eviction_policies = {
-        "normal": 1,
-        "first": 2,
-        "last": 3,
-    }
-    if isinstance(eviction_policy, Attribute):
-        return eviction_policy
-    assert (
-        eviction_policy in eviction_policies
-    ), f"eviction_policy {eviction_policy} not in eviction_policies"
-    return IntegerAttr.get(
-        IntegerType.get_signless(32, context=context),
-        eviction_policies[eviction_policy],
-    )
+class _PlusPtr(Type):
+    def __pos__(self):
+        return PointerType.of_pointee_type(self)
 
 
-@register_attribute_builder("TT_ProgramDim")
-def _tT_ProgramDim(dim: str | Attribute, context: Context):
-    dims = {
-        "x": 0,
-        "y": 1,
-        "z": 2,
-    }
-    if isinstance(dim, Attribute):
-        return dim
-    assert dim in dims, f"dim {dim} not in dims"
-    return IntegerAttr.get(
-        IntegerType.get_signless(32, context=context),
-        dims[dim],
-    )
+class T:
+    @_classproperty
+    def i16(cls):
+        return _PlusPtr(_T.i16())
 
+    @_classproperty
+    def i32(cls):
+        return _PlusPtr(_T.i32())
 
-@register_attribute_builder("TT_PaddingOptionAttr")
-def _tT_PaddingOptionAttr(padding_option: str | Attribute, context: Context):
-    padding_options = {
-        "zero": 1,
-        "nan": 2,
-    }
-    if isinstance(padding_option, Attribute):
-        return padding_option
-    assert (
-        padding_option in padding_options
-    ), f"padding_option {padding_option} not in padding_options"
-    return IntegerAttr.get(
-        IntegerType.get_signless(32, context=context),
-        padding_options[padding_option],
-    )
+    @_classproperty
+    def i64(cls):
+        return _PlusPtr(_T.i64())
 
+    @_classproperty
+    def f16(cls):
+        return _PlusPtr(_T.f16())
 
-@register_attribute_builder("TT_AtomicRMWAttr")
-def _tT_AtomicRMWAttr(rmwop: str | Attribute, context: Context):
-    rmwops = {
-        "and": 1,
-        "or": 2,
-        "xor": 3,
-        "add": 4,
-        "fadd": 5,
-        "max": 6,
-        "min": 7,
-        "umax": 8,
-        "umin": 9,
-        "exch": 10,
-    }
-    if isinstance(rmwop, Attribute):
-        return rmwop
-    assert rmwop in rmwops, f"rmwop {rmwop} not in rmwops"
-    return IntegerAttr.get(
-        IntegerType.get_signless(32, context=context),
-        rmwops[rmwop],
-    )
+    @_classproperty
+    def f32(cls):
+        return _PlusPtr(_T.f32())
+
+    @_classproperty
+    def f64(cls):
+        return _PlusPtr(_T.f64())
+
+    @_classproperty
+    def bf16(cls):
+        return _PlusPtr(_T.bf16())
+
+    # matches python/triton/language/core.py
+    @_classproperty
+    def void(cls):
+        return _T.none()
+
+    @_classproperty
+    def int1(cls):
+        return _T.bool()
+
+    # note that triton thinks these are signed but they're actually signless
+    @_classproperty
+    def int8(cls):
+        return _T.i8()
+
+    @_classproperty
+    def int16(cls):
+        return _PlusPtr(_T.i16())
+
+    @_classproperty
+    def int32(cls):
+        return _PlusPtr(_T.i32())
+
+    @_classproperty
+    def int64(cls):
+        return _PlusPtr(_T.i64())
+
+    @_classproperty
+    def float16(cls):
+        return _PlusPtr(_T.f16())
+
+    @_classproperty
+    def float32(cls):
+        return _PlusPtr(_T.f32())
+
+    @_classproperty
+    def float64(cls):
+        return _PlusPtr(_T.f64())
+
+    @_classproperty
+    def bfloat16(cls):
+        return _T.bf16()
+
+    tensor = lambda *args, **kwargs: _T.tensor(*args, **kwargs)
 
 
 @make_maybe_no_args_decorator
@@ -421,8 +417,8 @@ def cdiv(lhs, rhs, *, loc=None, ip=None):
 def load(
     ptr: TritonTensor,
     mask: TritonTensor,
-    cache="none",
-    evict="normal",
+    cache=tt.CacheModifier.NONE,
+    evict=tt.EvictionPolicy.NORMAL,
     is_volatile=False,
     *,
     other=None,
@@ -540,91 +536,3 @@ def addptr(
         ), f"'tt.addptr' op all non-scalar operands/results must have the same shape and base type: {ptr=} {offset=}"
     result_type = ptr.type
     return TritonTensor(tt.addptr(result_type, ptr, offset, loc=loc, ip=ip))
-
-
-class classproperty:
-    def __init__(self, func):
-        self.fget = func
-
-    def __get__(self, instance, owner):
-        return self.fget(owner)
-
-
-class PlusPtr(Type):
-    def __pos__(self):
-        return PointerType.of_pointee_type(self)
-
-
-class T:
-
-    @classproperty
-    def i16(cls):
-        return PlusPtr(_T.i16())
-
-    @classproperty
-    def i32(cls):
-        return PlusPtr(_T.i32())
-
-    @classproperty
-    def i64(cls):
-        return PlusPtr(_T.i64())
-
-    @classproperty
-    def f16(cls):
-        return PlusPtr(_T.f16())
-
-    @classproperty
-    def f32(cls):
-        return PlusPtr(_T.f32())
-
-    @classproperty
-    def f64(cls):
-        return PlusPtr(_T.f64())
-
-    @classproperty
-    def bf16(cls):
-        return PlusPtr(_T.bf16())
-
-    # matches python/triton/language/core.py
-    @classproperty
-    def void(cls):
-        return _T.none()
-
-    @classproperty
-    def int1(cls):
-        return _T.bool()
-
-    # note that triton thinks these are signed but they're actually signless
-    @classproperty
-    def int8(cls):
-        return _T.i8()
-
-    @classproperty
-    def int16(cls):
-        return PlusPtr(_T.i16())
-
-    @classproperty
-    def int32(cls):
-        return PlusPtr(_T.i32())
-
-    @classproperty
-    def int64(cls):
-        return PlusPtr(_T.i64())
-
-    @classproperty
-    def float16(cls):
-        return PlusPtr(_T.f16())
-
-    @classproperty
-    def float32(cls):
-        return PlusPtr(_T.f32())
-
-    @classproperty
-    def float64(cls):
-        return PlusPtr(_T.f64())
-
-    @classproperty
-    def bfloat16(cls):
-        return _T.bf16()
-
-    tensor = lambda *args, **kwargs: _T.tensor(*args, **kwargs)
