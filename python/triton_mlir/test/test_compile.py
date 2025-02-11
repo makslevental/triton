@@ -12,7 +12,7 @@ from triton_mlir.extras.testing import mlir_ctx as ctx, filecheck, MLIRContext
 
 from triton_mlir.dialects import tt, ttpp
 from triton_mlir.types import T
-from triton_mlir.runtime import make_ttir, make_ttgir, parse_options, make_llir
+from triton_mlir.compile import make_ttir, make_ttgir, parse_options, make_llir
 
 # noinspection PyUnresolvedReferences
 from triton_mlir.dialects.tt import splat, arange, addptr, load, store
@@ -155,5 +155,9 @@ def test_make_llir(ctx):
 
 
 if __name__ == "__main__":
+    with mlir_mod_ctx(allow_unregistered_dialects=True) as ctx:
+        test_make_ttir(ctx)
+    with mlir_mod_ctx(allow_unregistered_dialects=True) as ctx:
+        test_make_ttgir(ctx)
     with mlir_mod_ctx(allow_unregistered_dialects=True) as ctx:
         test_make_llir(ctx)
