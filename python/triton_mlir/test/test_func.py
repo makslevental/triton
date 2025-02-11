@@ -1,7 +1,6 @@
 import threading
 
 import pytest
-from triton_mlir.extras.context import RAIIMLIRContextModule
 
 # this needs to be below the triton_mlir_bindings
 from triton_mlir.extras.dialects.ext import arith
@@ -9,17 +8,17 @@ from triton_mlir.extras.dialects.ext import arith
 # noinspection PyUnresolvedReferences
 from triton_mlir.extras.testing import mlir_ctx as ctx, filecheck, MLIRContext
 
-from triton_mlir.dialects import tt, ttpp
-from triton_mlir.dialects.ttpp import T
+from triton_mlir.dialects import tt
+from triton_mlir.types import T
 
 # noinspection PyUnresolvedReferences
-from triton_mlir.dialects.ttpp import splat, arange, addptr, load, store
+from triton_mlir.dialects.tt import splat, arange, addptr, load, store
 
 pytest.mark.usefixtures("ctx")
 
 
 def test_vadd(ctx):
-    @ttpp.jit
+    @tt.jit
     def kernel_0123(
         arg0: +T.float32, arg1: +T.float32, arg2: +T.float32, arg3: T.int32
     ):
