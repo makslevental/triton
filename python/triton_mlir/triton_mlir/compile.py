@@ -1,4 +1,5 @@
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Tuple, Any
@@ -6,7 +7,7 @@ from typing import Tuple, Any
 from triton_mlir.extras.runtime.passes import Pipeline
 from triton_mlir.passmanager import PassManager
 from triton_mlir.ir import Module
-from triton_mlir.dialects.tt import has_matrix_core_feature, translate_to_llvmir
+from triton_mlir.dialects.tt import llvm as tt_llvm
 import llvm
 
 
@@ -579,6 +580,7 @@ class TritonPipeline(Pipeline):
 @dataclass(frozen=True)
 class HIPOptions:
     num_warps: int = 4
+    warp_size: int = 32
     waves_per_eu: int = 1
     num_stages: int = 2
     num_ctas: int = 1
@@ -648,7 +650,9 @@ def parse_options(target_arch, **opts) -> HIPOptions:
         args["supported_fp8_dtypes"] = tuple(sorted(supported_fp8_dtypes))
 
     if "enable_fp_fusion" not in opts:
-        args["enable_fp_fusion"] = os.getenv("TRITON_DEFAULT_FP_FUSION", "1") == "1"
+        args["enable_fp_fusion"] = strtobool(
+            os.getenv("TRITON_DEFAULT_FP_FUSION", "True")
+        )
     args.update(
         {
             k: opts[k]
@@ -701,12 +705,12 @@ def make_ttgir(mod: Module, options: HIPOptions):
         .tritongpu_optimize_dot_operands(hoist_layout_conversion=True)
     )
 
-    stream_prefetch = os.getenv("TRITON_HIP_STREAM_PREFETCH", "0") == "1"
+    stream_prefetch = strtobool(os.getenv("TRITON_HIP_STREAM_PREFETCH", "False"))
     # The `local-prefetch` scheduling variant requires turning on buffer ops.
     if options.instruction_sched_variant == "local-prefetch":
         stream_prefetch = True
 
-    if has_matrix_core_feature(options.arch):
+    if tt_llvm.has_matrix_core_feature(options.arch):
         assert options.num_stages != 0, (
             "Triton AMD backend pipeliner has been updated. "
             "We used to trigger software pipelining with "
@@ -726,9 +730,11 @@ def make_ttgir(mod: Module, options: HIPOptions):
         .tritongpu_remove_layout_conversions()
         .tritongpu_reduce_data_duplication()
     )
-    if has_matrix_core_feature(options.arch):
+    if tt_llvm.has_matrix_core_feature(options.arch):
         p = p.tritonamdgpu_reorder_instructions()
-        use_block_pingpong = os.getenv("TRITON_HIP_USE_BLOCK_PINGPONG", "0") == "1"
+        use_block_pingpong = strtobool(
+            os.getenv("TRITON_HIP_USE_BLOCK_PINGPONG", "False")
+        )
         if use_block_pingpong and options.num_stages == 2:
             p = p.tritonamdgpu_block_pingpong()
 
@@ -743,6 +749,69 @@ def make_ttgir(mod: Module, options: HIPOptions):
     pm = PassManager.parse(p.materialize())
     pm.run(mod.operation)
     return mod
+
+
+AMD_TRIPLE = "amdgcn-amd-amdhsa"
+
+
+def strtobool(val):
+    val = val.lower()
+    if val in ("y", "yes", "t", "true", "on", "1"):
+        return True
+    elif val in ("n", "no", "f", "false", "off", "0"):
+        return False
+    else:
+        raise ValueError("invalid truth value %r" % (val,))
+
+
+def add_enum_attr_to_function_arg(fn, i, attr_name):
+    llvm_context = llvm.get_value_context(fn)
+    k = llvm.get_enum_attribute_kind_for_name(attr_name, len(attr_name))
+    attr = llvm.create_enum_attribute(llvm_context, k, val=0)
+    # Value must be zero for enum attributes
+    llvm.add_attribute_at_index(fn, i, attr)
+
+
+LLVMAttributeFunctionIndex = 0xFFFFFFFF
+
+
+def add_enum_attr_to_function(fn, attr_name):
+    llvm_context = llvm.get_value_context(fn)
+    k = llvm.get_enum_attribute_kind_for_name(attr_name, len(attr_name))
+    attr = llvm.create_enum_attribute(llvm_context, k, val=0)
+    # Value must be zero for enum attributes
+    llvm.add_attribute_at_index(
+        fn,
+        LLVMAttributeFunctionIndex,
+        attr,
+    )
+
+
+def add_string_attr_to_function(fn, attr_name, attr_val):
+    llvm_context = llvm.get_value_context(fn)
+    attr = llvm.create_string_attribute(
+        llvm_context,
+        attr_name,
+        len(attr_name),
+        attr_val,
+        len(attr_val),
+    )
+    llvm.add_attribute_at_index(fn, LLVMAttributeFunctionIndex, attr)
+
+
+def add_control_constant(llvm_mod, name, bitwidth, value):
+    ctx = llvm.get_module_context(llvm_mod)
+    int_ty = llvm.int_type_in_context(ctx, bitwidth)
+    initer = llvm.const_int(int_ty, value, sign_extend=False)
+    constant = llvm.add_global_in_address_space(llvm_mod, int_ty, name, address_space=4)
+    llvm.set_global_constant(constant, is_constant=True)
+    llvm.set_linkage(constant, llvm.Linkage.link_once_odr_linkage)
+    llvm.set_initializer(constant, initer)
+    llvm.set_thread_local(constant, is_thread_local=False)
+
+    llvm.set_alignment(constant, bitwidth // 8)
+    llvm.set_unnamed_address(constant, llvm.UnnamedAddr.local_unnamed_addr)
+    llvm.set_visibility(constant, llvm.Visibility.protected_visibility)
 
 
 def make_llir(mod, options: HIPOptions):
@@ -790,38 +859,91 @@ def make_llir(mod, options: HIPOptions):
         p = p.ensure_debug_info_scope_on_llvm_func()
     p = p.convert_builtin_func_to_llvm(__HIP_FTZ)
     pm = PassManager.parse(p.materialize())
-    print(pm)
     pm.run(mod.operation)
 
     # LLVM-IR (MLIR) -> LLVM-IR (LLVM)
     llvm.initialize_all_targets()
-    context = llvm.context_create()
-    llvm_mod = translate_to_llvmir(mod, context)
-    llvm.set_target(llvm_mod, "amdgcn-amd-amdhsa")
-    return llvm_mod
+    llvm.initialize_all_target_infos()
+    llvm.initialize_all_target_m_cs()
+    llvm.initialize_all_asm_parsers()
+    llvm.initialize_all_asm_printers()
+
+    llvm_mod = tt_llvm.translate_to_llvmir(mod)
+    llvm.set_target(llvm_mod, AMD_TRIPLE)
 
     target_features = ""
-    if os.environ.get("TRITON_ENABLE_ASAN", "0") == "1":
+    if strtobool(os.environ.get("TRITON_ENABLE_ASAN", "False")):
         target_features = "+xnack"
-    llvm.attach_datalayout(llvm_mod, amd.TARGET_TRIPLE, options.arch, target_features)
+
+    target = llvm.get_target_from_triple(AMD_TRIPLE)
+    tm = llvm.create_target_machine(
+        target,
+        AMD_TRIPLE,
+        options.arch,
+        target_features,
+        llvm.CodeGenOptLevel.code_gen_level_none,
+        llvm.RelocMode.reloc_pic,
+        llvm.CodeModel.default,
+    )
+    llvm.set_module_data_layout(llvm_mod, llvm.create_target_data_layout(tm))
 
     # Set various control constants on the LLVM module so that device
     # libraries can resolve references to them.
-    amd.set_isa_version(llvm_mod, options.arch)
-    amd.set_abi_version(llvm_mod, 500)
-    amd.set_bool_control_constant(llvm_mod, "__oclc_finite_only_opt", False)
-    amd.set_bool_control_constant(llvm_mod, "__oclc_correctly_rounded_sqrt32", True)
-    amd.set_bool_control_constant(llvm_mod, "__oclc_unsafe_math_opt", False)
-    amd.set_bool_control_constant(
-        llvm_mod, "__oclc_wavefrontsize64", options.warp_size == 64
+    isav = tt_llvm.get_isa_version(options.arch)
+    add_control_constant(
+        llvm_mod,
+        "__oclc_ISA_version",
+        bitwidth=32,
+        value=isav.major * 1000 + isav.minor * 100 + isav.stepping,
+    )
+    abiv = 500
+    add_control_constant(
+        llvm_mod,
+        "__oclc_ABI_version",
+        bitwidth=32,
+        value=500,
+    )
+    mod_flag = "amdhsa_code_object_version"
+    tt_llvm.add_module_flag(llvm_mod, mod_flag, abiv)
+    add_control_constant(
+        llvm_mod,
+        "__oclc_finite_only_opt",
+        bitwidth=8,
+        value=False,
+    )
+    add_control_constant(
+        llvm_mod,
+        "__oclc_correctly_rounded_sqrt32",
+        bitwidth=8,
+        value=True,
+    )
+    add_control_constant(
+        llvm_mod,
+        "__oclc_unsafe_math_opt",
+        bitwidth=8,
+        value=False,
+    )
+    add_control_constant(
+        llvm_mod,
+        "__oclc_wavefrontsize64",
+        bitwidth=8,
+        value=options.warp_size == 64,
     )
 
     # Set kernel attributes first given this may affect later optimizations.
-    fns = [fn for fn in llvm_mod.get_functions() if not fn.is_declaration()]
+    fn = llvm.get_first_function(llvm_mod)
+    for i in range(10):
+        if not llvm.is_declaration(fn):
+            break
+        fn = llvm.get_next_function(fn)
+    else:
+        raise RuntimeError("couldn't find kernel")
     # The public kernel should be kernel 0.
-    fns[0].set_calling_conv(amd.CALLING_CONV_AMDGPU_KERNEL)
-    fns[0].add_fn_attr(
-        "amdgpu-flat-work-group-size", f"1,{options.num_warps*options.warp_size}"
+    llvm.set_function_call_conv(fn, tt_llvm.get_calling_conv_amdgpu_kernel())
+    add_string_attr_to_function(
+        fn,
+        "amdgpu-flat-work-group-size",
+        f"1,{options.num_warps*options.warp_size}",
     )
     # LLVM AMDGPU backend supports the attribute "amdgpu-waves-per-eu"="<min>[, <max>]".
     # This attribute may be attached to a kernel function definition and is an optimization hint.
@@ -830,43 +952,70 @@ def make_llir(mod, options: HIPOptions):
     # If <max> is omitted, then there is no restriction on the maximum number of waves per EU other than
     # the one dictated by the hardware for which the kernel is compiled. Passing 0, 0 as <min>, <max>
     # implies the default behavior (no limits).
-    fns[0].add_fn_attr("amdgpu-waves-per-eu", f"{options.waves_per_eu}")
+    add_string_attr_to_function(fn, "amdgpu-waves-per-eu", f"{options.waves_per_eu}")
     denormal_mode = "preserve-sign" if options.allow_flush_denorm else "ieee"
-    fns[0].add_fn_attr("denormal-fp-math-f32", denormal_mode)
+    add_string_attr_to_function(fn, "denormal-fp-math-f32", denormal_mode)
     if os.environ.get("TRITON_ENABLE_ASAN", "0") == "1":
-        fns[0].add_fn_target_feature("+xnack")
-        fns[0].add_fn_asan_attr()
+        add_string_attr_to_function(fn, "target-features", "+xnack")
+        add_string_attr_to_function(fn, "target-features", "sanitize_address")
 
     # Hint the compiler that we'd like the firmware to set the kernel arguments
     # to user SGPRs so that the kernel does not need to s_load its arguments
     # from memory.
-    amd.set_all_fn_arg_inreg(fns[0])
+    in_reg = "inreg"
+    for i in range(llvm.count_params(fn)):
+        attrs = llvm.get_attributes_at_index(fn, i)
+        if len(attrs):
+            raise NotImplemented("existing attrs not supported/not checked")
+        add_enum_attr_to_function_arg(fn, i, in_reg)
 
-    if os.environ.get("TRITON_ENABLE_ASAN", "0") == "1":
+    enable_asan = strtobool(os.environ.get("TRITON_ENABLE_ASAN", "False"))
+    if enable_asan:
+        raise NotImplementedError()
+
         default_libdir = Path(__file__).parent / "lib"
         paths = [
             str(default_libdir / "asanrtl.bc"),
             str(default_libdir / "ocml.bc"),
             str(default_libdir / "ockl.bc"),
         ]
-        llvm.link_extern_libs(llvm_mod, paths)
+        tt_llvm.link_extern_libs(llvm_mod, paths)
     elif options.extern_libs:
+        raise NotImplementedError()
+
         paths = [
             path
             for (name, path) in options.extern_libs
             if amd.need_extern_lib(llvm_mod, name)
         ]
-        llvm.link_extern_libs(llvm_mod, paths)
+        tt_llvm.link_extern_libs(llvm_mod, paths)
 
-    llvm.optimize_module(
-        llvm_mod, llvm.OPTIMIZE_O3, options.arch, "", [], options.enable_fp_fusion
+    tt_llvm.init_all_targets()
+    llvm_mod = tt_llvm.optimize_module(
+        llvm_mod,
+        flags=[],
+        arch=options.arch,
+        features="",
+        opt_level=tt_llvm.OptimizationLevel.O3,
+        enable_fp_fusion=options.enable_fp_fusion,
+        llvm_ir_enable_dump=strtobool(os.getenv("LLVM_IR_ENABLE_DUMP", "False")),
+        enable_address_sanitizer=enable_asan,
+        disable_llvm_opt=strtobool(os.getenv("DISABLE_LLVM_OPT", "False")),
     )
 
-    amd.cleanup_bitcode_metadata(llvm_mod)
+    tt_llvm.cleanup_bitcode_metadata(llvm_mod)
     # Disable inlining of print related functions,
     # because inlining of these function could slow down compilation significantly
-    amd.disable_print_inline(llvm_mod)
-    return str(llvm_mod)
+    prefixes = {"__ockl_fprintf", "__ockl_printf"}
+    fn = llvm.get_first_function(llvm_mod)
+    for i in range(10):
+        name = llvm.get_value_name(fn)
+        if not name:
+            continue
+        if any(name.startswith(p) for p in prefixes):
+            add_enum_attr_to_function(fn, "noinline")
+
+    return llvm_mod
 
 
 def make_amdgcn(src, metadata, options):
