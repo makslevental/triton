@@ -12,12 +12,12 @@
 #include "amd/include/TritonAMDGPUToLLVM/Passes.h"
 #include "amd/include/TritonAMDGPUToLLVM/TargetUtils.h"
 #include "amd/include/TritonAMDGPUTransforms/Passes.h"
-#include "amd/include/TritonAMDGPUTransforms/TritonGPUConversion.h"
+#include "lib/Target/LLVMIR/LLVMPasses.h"
+#include "mlir-c/Target/LLVMIR.h"
 #include "mlir/CAPI/IR.h"
 #include "mlir/CAPI/Registration.h"
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"
 #include "mlir/Dialect/LLVMIR/ROCDLDialect.h"
-#include "mlir/IR/MLIRContext.h"
 #include "mlir/InitAllDialects.h"
 #include "mlir/InitAllExtensions.h"
 #include "mlir/InitAllPasses.h"
@@ -35,6 +35,19 @@
 #include "triton/Dialect/TritonNvidiaGPU/IR/Dialect.h"
 #include "triton/Dialect/TritonNvidiaGPU/Transforms/Passes.h"
 #include "triton/Target/LLVMIR/Passes.h"
+#include "llvm-c/Core.h"
+#include "llvm-c/TargetMachine.h"
+#include "llvm/Analysis/CGSCCPassManager.h"
+#include "llvm/Analysis/LoopAnalysisManager.h"
+#include "llvm/MC/TargetRegistry.h"
+#include "llvm/Passes/PassBuilder.h"
+#include "llvm/Passes/StandardInstrumentations.h"
+#include "llvm/Support/TargetSelect.h"
+#include "llvm/Target/TargetMachine.h"
+#include "llvm/Target/TargetOptions.h"
+#include "llvm/TargetParser/TargetParser.h"
+#include "llvm/Transforms/InstCombine/InstCombine.h"
+#include "llvm/Transforms/Instrumentation/AddressSanitizer.h"
 
 namespace mlir::test {
 void registerTestAliasPass();
@@ -257,3 +270,199 @@ bool hasMatrixCoreFeature(MlirStringRef arch) {
     return false;
   }
 }
+
+void addModuleFlag(LLVMModuleRef llvmModRef, MlirStringRef Key, uint32_t Val) {
+  llvm::unwrap(llvmModRef)
+      ->addModuleFlag(llvm::Module::Error, unwrap(Key), Val);
+}
+
+IsaVersion getIsaVersion(MlirStringRef arch) {
+  auto isav = llvm::AMDGPU::getIsaVersion(unwrap(arch));
+  return {isav.Major, isav.Minor, isav.Stepping};
+}
+
+unsigned getCallingConvAMDGPUKernel() {
+  return llvm::CallingConv::AMDGPU_KERNEL;
+}
+
+static LLVMTargetMachineRef wrap(const llvm::TargetMachine *P) {
+  return reinterpret_cast<LLVMTargetMachineRef>(
+      const_cast<llvm::TargetMachine *>(P));
+}
+
+static llvm::TargetMachine *unwrap(LLVMTargetMachineRef P) {
+  return reinterpret_cast<llvm::TargetMachine *>(P);
+}
+
+LLVMTargetMachineRef createTargetMachine(MlirStringRef targetTripleRef,
+                                         MlirStringRef proc,
+                                         bool enable_fp_fusion,
+                                         MlirStringRef features,
+                                         bool disableLLVMOpt) {
+  std::string error;
+  auto target =
+      llvm::TargetRegistry::lookupTarget(unwrap(targetTripleRef), error);
+  if (!error.empty())
+    llvm::report_fatal_error(error.c_str());
+  llvm::TargetOptions opt;
+  if (enable_fp_fusion)
+    opt.AllowFPOpFusion = llvm::FPOpFusion::Fast;
+  opt.UnsafeFPMath = false;
+  opt.NoInfsFPMath = false;
+  opt.NoNaNsFPMath = true;
+  opt.TrapUnreachable = true;
+  opt.MCOptions.AsmVerbose = true;
+  opt.MCOptions.PreserveAsmComments = true;
+  llvm::TargetMachine *machine = target->createTargetMachine(
+      unwrap(targetTripleRef), unwrap(proc), unwrap(features), opt,
+      llvm::Reloc::PIC_, std::nullopt,
+      disableLLVMOpt ? llvm::CodeGenOptLevel::None
+                     : llvm::CodeGenOptLevel::Aggressive);
+  return wrap(machine);
+}
+
+void initAllLLVMTargets() {
+  static std::once_flag init_flag;
+  std::call_once(init_flag, []() {
+    llvm::InitializeAllTargetInfos();
+    llvm::InitializeAllTargets();
+    llvm::InitializeAllTargetMCs();
+    llvm::InitializeAllAsmParsers();
+    llvm::InitializeAllAsmPrinters();
+  });
+}
+
+LLVMModuleRef optimizeModule(LLVMModuleRef llvmModRef, MlirStringRef flagList,
+                             MlirStringRef arch, MlirStringRef features,
+                             LLVMOptimizationLevel optLevel,
+                             bool enableFPFusion, bool llvmIREnableDump,
+                             bool enableAddressSanitizer, bool disableLLVMOpt) {
+  if (disableLLVMOpt)
+    return llvmModRef;
+  // Check to see if we are passing a list of flags to disable
+  // optimizations.
+  if (flagList.data) {
+    auto options = llvm::cl::getRegisteredOptions();
+    llvm::SmallVector<llvm::StringRef, 3> split;
+    llvm::StringRef(unwrap(flagList)).split(split, ',');
+    for (auto flag : split) {
+      auto optIt = options.find(flag);
+      if (optIt != options.end()) {
+        auto optPtr = static_cast<llvm::cl::opt<bool> *>(optIt->second);
+        *optPtr = true;
+      }
+    }
+  }
+  llvm::LoopAnalysisManager lam;
+  llvm::FunctionAnalysisManager fam;
+  llvm::CGSCCAnalysisManager cgam;
+  llvm::ModuleAnalysisManager mam;
+
+  llvm::PassInstrumentationCallbacks *instrCbPtr = nullptr;
+  llvm::PassInstrumentationCallbacks passInstrCb;
+  llvm::Module *mod = llvm::unwrap(llvmModRef);
+  llvm::StandardInstrumentations standardInstr(mod->getContext(),
+                                               /*DebugLogging*/ true);
+  if (llvmIREnableDump) {
+    auto optMap = llvm::cl::getRegisteredOptions();
+    auto optIt = optMap.find("print-after-all");
+    if (optIt != optMap.end()) {
+      auto optPtr = static_cast<llvm::cl::opt<bool> *>(optIt->second);
+      *optPtr = true;
+    }
+    standardInstr.registerCallbacks(passInstrCb, &mam);
+    instrCbPtr = &passInstrCb;
+  }
+
+  llvm::PipelineTuningOptions tuningOptions;
+  tuningOptions.LoopUnrolling = true;
+  tuningOptions.LoopInterleaving = true;
+  tuningOptions.LoopVectorization = true;
+  // TODO: currently we run SLP vectorizer with an empty target machine.
+  // This cause the vectorizer to create larger vector which could be bad.
+  // Disabling it would currently cause regressions as this pass also
+  // applies some scheduling that helps performance in some cases. We
+  // should work on using NVPTX target instead and address the performance
+  // regressions with some scheduling solution.
+  tuningOptions.SLPVectorization = true;
+
+  // We don't pass the targetMachine to the LLVM-IR pass builder, unless
+  // `arch` is specified.
+  //
+  // Don't set target machine in LLVM pass builder when using LLVM IR
+  // level plugins. LLVM IR level plugin passes typically want to insert
+  // calls to externally generated code (i.e. precompile a Cuda/Hip kernel
+  // with Clang and then insert a call to it within an instrumentation
+  // pass) setting the targetMachine value here can can cause a mismatch
+  // in the target machine between the MLIR and Clang generated kernels
+  // and break the lowering of some target specific intrinsics.
+  llvm::TargetMachine *targetMachine = nullptr;
+  if (arch.data)
+    targetMachine = unwrap(createTargetMachine(
+        mlirStringRefCreateFromCString(mod->getTargetTriple().c_str()), arch,
+        enableFPFusion, features, disableLLVMOpt));
+  llvm::PassBuilder pb(/*targetMachine=*/targetMachine, tuningOptions,
+                       std::nullopt, instrCbPtr);
+
+  pb.registerModuleAnalyses(mam);
+  pb.registerCGSCCAnalyses(cgam);
+  pb.registerFunctionAnalyses(fam);
+  pb.registerLoopAnalyses(lam);
+  pb.crossRegisterProxies(lam, fam, cgam, mam);
+
+  llvm::ModulePassManager mpm;
+  pb.registerVectorizerStartEPCallback(
+      [&](llvm::FunctionPassManager &fpm, llvm::OptimizationLevel level) {
+        // Triton generates large structure of scalars which may pessimise
+        // optimizations, we run a pass to break up phi of struct to make
+        // sure all the struct are removed for the following passes.
+        fpm.addPass(llvm::BreakStructPhiNodesPass());
+        fpm.addPass(llvm::InstCombinePass());
+      });
+  if (enableAddressSanitizer) {
+    llvm::AddressSanitizerOptions Opts;
+    mpm.addPass(llvm::AddressSanitizerPass(Opts));
+  }
+  llvm::OptimizationLevel OL;
+  switch (optLevel) {
+  case O0:
+    OL = llvm::OptimizationLevel::O0;
+    break;
+  case O1:
+    OL = llvm::OptimizationLevel::O1;
+    break;
+  case O2:
+    OL = llvm::OptimizationLevel::O2;
+    break;
+  case O3:
+    OL = llvm::OptimizationLevel::O3;
+    break;
+  case Os:
+    OL = llvm::OptimizationLevel::Os;
+    break;
+  case Oz:
+    OL = llvm::OptimizationLevel::Oz;
+    break;
+  }
+  mpm.addPass(pb.buildPerModuleDefaultPipeline(OL));
+  mpm.run(*mod, mam);
+  return llvm::wrap(mod);
+}
+
+void cleanupBitcodeMetadata(LLVMModuleRef llvmModRef) {
+  llvm::Module *module = llvm::unwrap(llvmModRef);
+  // We can have Clang version metadata from device libraries linked in. We
+  // don't care about them so drop them.
+  if (auto *ident = module->getNamedMetadata("llvm.ident"))
+    module->eraseNamedMetadata(ident);
+  // Also various OpenCL version details.
+  if (auto *openclVersion = module->getNamedMetadata("opencl.ocl.version"))
+    module->eraseNamedMetadata(openclVersion);
+}
+
+LLVMModuleRef translateToLLVMIR(MlirModule module) {
+  LLVMContextRef llvmContext = LLVMContextCreate();
+  MlirOperation operation = mlirModuleGetOperation(module);
+  auto mod = mlirTranslateModuleToLLVMIR(operation, llvmContext);
+  return mod;
+};
