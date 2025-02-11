@@ -1,7 +1,8 @@
 import pytest
 from triton_mlir.ir import Type
 from triton_mlir.dialects.tensor import empty
-from triton_mlir.dialects.ttpp import PointerType, T, is_ptr
+from triton_mlir.dialects.ttpp import is_ptr
+from triton_mlir.types import T, PointerType
 from triton_mlir.extras.context import MLIRContext
 from triton_mlir.extras.testing import mlir_ctx as ctx
 
