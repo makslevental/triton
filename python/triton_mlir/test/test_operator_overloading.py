@@ -3,15 +3,13 @@ from textwrap import dedent
 import pytest
 from triton_mlir._mlir_libs._mlir.passmanager import PassManager
 from triton_mlir.dialects import tt, ttpp
-from triton_mlir.dialects.ttpp import T
+from triton_mlir.types import T
 
 # this needs to be below the triton_mlir_bindings
 from triton_mlir.extras.dialects.ext import arith, tensor
 
-
 # noinspection PyUnresolvedReferences
-from triton_mlir.dialects.ttpp import splat, arange, addptr, load, store
-from triton_mlir.extras.dialects.ext.scf import range_, yield_, for_
+from triton_mlir.extras.dialects.ext.scf import range_, yield_
 
 # noinspection PyUnresolvedReferences
 from triton_mlir.extras.testing import mlir_ctx as ctx, filecheck, MLIRContext
@@ -43,7 +41,7 @@ def test_tensor_arithmetic(ctx: MLIRContext):
 def test_vadd(ctx: MLIRContext):
     BLOCK_SIZE = 64
 
-    @ttpp.jit
+    @tt.jit
     def kernel_0123(
         x_ptr: +T.float32,
         y_ptr: +T.float32,
@@ -53,14 +51,14 @@ def test_vadd(ctx: MLIRContext):
         pid = tt.get_program_id(axis=tt.ProgramIDDim.X)
         block_size = arith.constant(BLOCK_SIZE, T.int32)
         block_start = pid * block_size
-        offsets = block_start + ttpp.arange(0, BLOCK_SIZE)
+        offsets = block_start + tt.arange(0, BLOCK_SIZE)
         mask = offsets < n_elements
 
-        x = ttpp.load(x_ptr + offsets, mask)
-        y = ttpp.load(y_ptr + offsets, mask)
+        x = tt.load(x_ptr + offsets, mask)
+        y = tt.load(y_ptr + offsets, mask)
 
         output = x + y
-        ttpp.store(output_ptr + offsets, output, mask)
+        tt.store(output_ptr + offsets, output, mask)
 
     kernel_0123.emit()
 
@@ -98,7 +96,7 @@ def test_vadd(ctx: MLIRContext):
 def test_vadd_set_get(ctx: MLIRContext):
     BLOCK_SIZE = 64
 
-    @ttpp.jit
+    @tt.jit
     def kernel_0123(
         x_ptr: +T.float32,
         y_ptr: +T.float32,
@@ -108,7 +106,7 @@ def test_vadd_set_get(ctx: MLIRContext):
         pid = tt.get_program_id(axis=tt.ProgramIDDim.X)
         block_size = arith.constant(BLOCK_SIZE, T.int32)
         block_start = pid * block_size
-        offsets = block_start + ttpp.arange(0, BLOCK_SIZE)
+        offsets = block_start + tt.arange(0, BLOCK_SIZE)
         mask = offsets < n_elements
 
         x_ptr += offsets
@@ -150,7 +148,6 @@ def test_vadd_set_get(ctx: MLIRContext):
     }
     """
     )
-    print(ctx.module)
     filecheck(correct, ctx.module)
 
 
@@ -160,7 +157,7 @@ def test_matmul(ctx: MLIRContext):
     BLOCK_SIZE_K = 16
     GROUP_SIZE_M = 2
 
-    @ttpp.jit
+    @tt.jit
     def matmul_kernel(
         a_ptr: +T.float32,
         b_ptr: +T.float32,
@@ -176,8 +173,8 @@ def test_matmul(ctx: MLIRContext):
         stride_cn: T.int32,
     ):
         pid = tt.get_program_id(axis=tt.ProgramIDDim.X)
-        num_pid_m = ttpp.cdiv(M, BLOCK_SIZE_M)
-        num_pid_n = ttpp.cdiv(N, BLOCK_SIZE_N)
+        num_pid_m = tt.cdiv(M, BLOCK_SIZE_M)
+        num_pid_n = tt.cdiv(N, BLOCK_SIZE_N)
         num_pid_in_group = GROUP_SIZE_M * num_pid_n
         group_id = pid // num_pid_in_group
         first_pid_m = group_id * GROUP_SIZE_M
@@ -185,18 +182,18 @@ def test_matmul(ctx: MLIRContext):
         pid_m = first_pid_m + (pid % group_size_m)
         pid_n = (pid % num_pid_in_group) // group_size_m
 
-        # offs_am = (pid_m * BLOCK_SIZE_M + ttpp.arange(0, BLOCK_SIZE_M)) % M
-        # offs_bn = (pid_n * BLOCK_SIZE_N + ttpp.arange(0, BLOCK_SIZE_N)) % N
-        offs_am = pid_m * BLOCK_SIZE_M + ttpp.arange(0, BLOCK_SIZE_M)
-        offs_bn = pid_n * BLOCK_SIZE_N + ttpp.arange(0, BLOCK_SIZE_N)
-        offs_k = ttpp.arange(0, BLOCK_SIZE_K)
+        # offs_am = (pid_m * BLOCK_SIZE_M + tt.arange(0, BLOCK_SIZE_M)) % M
+        # offs_bn = (pid_n * BLOCK_SIZE_N + tt.arange(0, BLOCK_SIZE_N)) % N
+        offs_am = pid_m * BLOCK_SIZE_M + tt.arange(0, BLOCK_SIZE_M)
+        offs_bn = pid_n * BLOCK_SIZE_N + tt.arange(0, BLOCK_SIZE_N)
+        offs_k = tt.arange(0, BLOCK_SIZE_K)
         a_ptrs = a_ptr + (offs_am[:, None] * stride_am + offs_k[None, :] * stride_ak)
         b_ptrs = b_ptr + (offs_k[:, None] * stride_bk + offs_bn[None, :] * stride_bn)
 
-        accumulator = ttpp.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=T.float32)
+        accumulator = tt.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=T.float32)
         acc = accumulator
 
-        r = ttpp.cdiv(K, BLOCK_SIZE_K)
+        r = tt.cdiv(K, BLOCK_SIZE_K)
         zero = arith.constant(0)
         one = arith.constant(1)
         # r = 1
@@ -204,29 +201,28 @@ def test_matmul(ctx: MLIRContext):
             zero, r, one, iter_args=[accumulator, a_ptrs, b_ptrs]
         ):
             mask = offs_k[None, :] < K - k * BLOCK_SIZE_K
-            a = ttpp.load(a_ptrs, mask=mask, other=0.0)
+            a = tt.load(a_ptrs, mask=mask, other=0.0)
             mask = offs_k[:, None] < K - k * BLOCK_SIZE_K
-            b = ttpp.load(b_ptrs, mask=mask, other=0.0)
+            b = tt.load(b_ptrs, mask=mask, other=0.0)
             # TODO(max): the problem here is the _update_frame_vars upstream
-            acc += ttpp.dot(a, b)
+            acc += tt.dot(a, b)
             aptrs += BLOCK_SIZE_K * stride_ak
             bptrs += BLOCK_SIZE_K * stride_bk
             acc, *_ = yield_(acc, aptrs, bptrs)
 
         c = acc
 
-        offs_cm = pid_m * BLOCK_SIZE_M + ttpp.arange(0, BLOCK_SIZE_M)
-        offs_cn = pid_n * BLOCK_SIZE_N + ttpp.arange(0, BLOCK_SIZE_N)
+        offs_cm = pid_m * BLOCK_SIZE_M + tt.arange(0, BLOCK_SIZE_M)
+        offs_cn = pid_n * BLOCK_SIZE_N + tt.arange(0, BLOCK_SIZE_N)
         c_ptrs = c_ptr + stride_cm * offs_cm[:, None] + stride_cn * offs_cn[None, :]
         c_mask = (offs_cm[:, None] < M) & (offs_cn[None, :] < N)
-        ttpp.store(c_ptrs, c, mask=c_mask)
+        tt.store(c_ptrs, c, mask=c_mask)
 
     matmul_kernel.emit()
 
     ctx.module.operation.verify()
     pm = PassManager.parse("builtin.module(cse)")
     pm.run(ctx.module.operation)
-    print(ctx.module)
     correct = dedent(
         """\
     module {
