@@ -13,9 +13,7 @@ include_directories(${TRITON_BINARY_DIR}/third_party/nvidia/include)
 include_directories(${TRITON_SOURCE_DIR}/third_party/proton/include)
 include_directories(${TRITON_BINARY_DIR}/third_party/proton/include)
 
-add_triton_library(TritonCAPI
-  Dialects.cpp
-  LINK_LIBS PUBLIC
+set(libs
   TritonIR
   TritonGPUIR
   TritonAMDGPUIR
@@ -39,6 +37,47 @@ add_triton_library(TritonCAPI
 
   MLIRBuiltinToLLVMIRTranslation
   MLIRLLVMToLLVMIRTranslation
+
+  # MLIR C API
+  MLIRCAPIIR
+  MLIRCAPILLVM
+
+  # LLVM
+  LLVMTargetParser
+  LLVMCore
+
+  # AMDGPU
+  LLVMAMDGPUCodeGen
+  LLVMAMDGPUAsmParser
+  LLVMAMDGPUDisassembler
+  LLVMAMDGPUTargetMCA
+  LLVMAMDGPUDesc
+  LLVMAMDGPUInfo
+  LLVMAMDGPUUtils
+  # NVPTX
+  LLVMNVPTXCodeGen
+  LLVMNVPTXDesc
+  LLVMNVPTXInfo
+)
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
+  list(APPEND libs
+    LLVMX86Info
+    LLVMX86CodeGen
+    LLVMX86AsmParser
+    LLVMX86Disassembler)
+elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64")
+  list(APPEND libs
+    LLVMAArch64Info
+    LLVMAArch64Desc
+    LLVMAArch64CodeGen
+    LLVMAArch64AsmParser
+    LLVMAArch64Disassembler)
+endif()
+
+add_triton_library(TritonCAPI
+  Dialects.cpp
+  LINK_LIBS PUBLIC
+  ${libs}
 
   DEPENDS
   TritonTableGen

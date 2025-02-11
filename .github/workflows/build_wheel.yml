@@ -15,7 +15,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  PIP_FIND_LINKS: "https://github.com/llvm/eudsl/releases/expanded_assets/latest https://github.com/makslevental/mlir-wheels/releases/expanded_assets/latest"
+  PIP_FIND_LINKS: "https://github.com/llvm/eudsl/releases/expanded_assets/dev https://github.com/makslevental/mlir-wheels/releases/expanded_assets/latest"
 
 jobs:
   build:
