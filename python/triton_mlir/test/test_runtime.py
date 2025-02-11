@@ -11,18 +11,18 @@ from triton_mlir.extras.dialects.ext import arith
 from triton_mlir.extras.testing import mlir_ctx as ctx, filecheck, MLIRContext
 
 from triton_mlir.dialects import tt, ttpp
-from triton_mlir.dialects.ttpp import T
+from triton_mlir.types import T
 from triton_mlir.runtime import make_ttir, make_ttgir, parse_options, make_llir
 
 # noinspection PyUnresolvedReferences
-from triton_mlir.dialects.ttpp import splat, arange, addptr, load, store
+from triton_mlir.dialects.tt import splat, arange, addptr, load, store
 from llvm import print_module_to_string
 
 pytest.mark.usefixtures("ctx")
 
 
 def test_make_ttir(ctx):
-    @ttpp.jit
+    @tt.jit
     def kernel_0123(
         arg0: +T.float32, arg1: +T.float32, arg2: +T.float32, arg3: T.int32
     ):
@@ -64,7 +64,7 @@ def test_make_ttir(ctx):
 
 
 def test_make_ttgir(ctx):
-    @ttpp.jit
+    @tt.jit
     def kernel_0123(
         arg0: +T.float32, arg1: +T.float32, arg2: +T.float32, arg3: T.int32
     ):
@@ -108,7 +108,7 @@ def test_make_ttgir(ctx):
 
 
 def test_make_llir(ctx):
-    @ttpp.jit
+    @tt.jit
     def kernel_0123(
         arg0: +T.float32, arg1: +T.float32, arg2: +T.float32, arg3: T.int32
     ):
