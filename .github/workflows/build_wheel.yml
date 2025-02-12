@@ -116,6 +116,7 @@ jobs:
         
             -DTRITON_CODEGEN_BACKENDS="amd;nvidia" 
             -DTRITON_BUILD_MLIR_PYTHON_MODULE=ON 
+            -DMLIR_BINDINGS_PYTHON_NB_DOMAIN="triton_mlir;NB_SHARED"
             -DTRITON_BUILD_PROTON=OFF 
             -DTRITON_BUILD_PYTHON_MODULE=OFF 
             -DTRITON_BUILD_TUTORIALS=OFF 
