@@ -116,7 +116,6 @@ jobs:
         
             -DTRITON_CODEGEN_BACKENDS="amd;nvidia" 
             -DTRITON_BUILD_MLIR_PYTHON_MODULE=ON 
-            -DMLIR_BINDINGS_PYTHON_NB_DOMAIN="triton_mlir;NB_SHARED"
             -DTRITON_BUILD_PROTON=OFF 
             -DTRITON_BUILD_PYTHON_MODULE=OFF 
             -DTRITON_BUILD_TUTORIALS=OFF 
@@ -167,10 +166,11 @@ jobs:
           $python3_command -m pip install hip-python -i https://test.pypi.org/simple
 
       - name: Upload artifacts
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
           name: triton_mlir_${{ matrix.name }}_${{ matrix.python-version }}_artifact
-          path: triton-install
+          path: wheelhouse
           if-no-files-found: warn
 
       - name: Release current commit
