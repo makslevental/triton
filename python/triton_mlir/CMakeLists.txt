@@ -1,6 +1,6 @@
-include(AddMLIRPython)
-
 add_compile_definitions("MLIR_PYTHON_PACKAGE_PREFIX=triton_mlir.")
+
+include(AddMLIRPython)
 
 include_directories(${TRITON_SOURCE_DIR}/third_party)
 include_directories(${TRITON_BINARY_DIR}/third_party)
@@ -20,7 +20,8 @@ include_directories(${TRITON_SOURCE_DIR}/third_party/proton/dialect/include/Dial
 set(CMAKE_C_VISIBILITY_PRESET "hidden")
 set(CMAKE_CXX_VISIBILITY_PRESET "hidden")
 set(CMAKE_VISIBILITY_INLINES_HIDDEN ON)
-set(MLIR_BINDINGS_PYTHON_NB_DOMAIN "triton_mlir")
+set(MLIR_BINDINGS_PYTHON_NB_DOMAIN "triton_mlir;NB_SHARED" CACHE STRING "" FORCE)
+set(MLIR_DISABLE_CONFIGURE_PYTHON_DEV_PACKAGES ON CACHE BOOL "" FORCE)
 
 ################################################################################
 # Sources
@@ -155,6 +156,11 @@ add_mlir_python_common_capi_library(TritonPythonCAPI
     MLIRPythonSources.Core
 )
 target_link_libraries(TritonPythonCAPI PRIVATE TritonCAPI)
+if(APPLE)
+  target_link_options(TritonPythonCAPI PRIVATE "LINKER:-u,_populateTritonExtension")
+elseif(UNIX)
+  target_link_options(TritonPythonCAPI PRIVATE "LINKER:-u,populateTritonExtension")
+endif()
 
 ################################################################################
 # Instantiation of all Python modules
@@ -215,6 +221,12 @@ add_mlir_python_modules(TritonPythonModules
   COMMON_CAPI_LINK_LIBS
     TritonPythonCAPI
 )
+
+target_link_libraries(TritonCAPI PUBLIC nanobind-triton_mlir Python::Module)
+target_link_options(nanobind-triton_mlir PRIVATE
+  $<$<PLATFORM_ID:Linux>:-fexceptions -frtti>
+  $<$<PLATFORM_ID:Darwin>:-fexceptions -frtti>
+  $<$<PLATFORM_ID:Windows>:/EHsc /GR>)
 
 macro(remove_flag_from_target _target _flag)
   get_target_property(_target_cxx_flags ${_target} COMPILE_OPTIONS)
