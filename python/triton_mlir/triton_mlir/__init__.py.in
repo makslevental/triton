@@ -1,0 +1,47 @@
+# becomes namespace package
+from pkgutil import extend_path
+
+__path__ = extend_path(__path__, __name__)
+
+from pathlib import Path
+
+import importlib.machinery
+import sys
+from importlib.abc import MetaPathFinder
+import importlib.util
+
+_triton_mod_path = (
+    Path(__file__).parent / "_mlir_libs" / "_triton@PYTHON_MODULE_EXTENSION@"
+)
+assert _triton_mod_path.exists(), f"couldn't find {_triton_mod_path}"
+
+modules = [
+    "_mlir",
+    "_mlirAsyncPasses",
+    "_mlirDialectsGPU",
+    "_mlirDialectsLinalg",
+    "_mlirDialectsLLVM",
+    "_mlirDialectsPDL",
+    "_mlirDialectsQuant",
+    "_mlirDialectsSparseTensor",
+    "_mlirDialectsTransform",
+    # "_mlirExecutionEngine"
+    "_mlirGPUPasses",
+    "_mlirLinalgPasses",
+    "_mlirSparseTensorPasses",
+    "_mlirTransformInterpreter",
+    "_site_initialize_0",
+]
+
+class MyMetaFinder(MetaPathFinder):
+    def find_spec(self, fullname, path, target=None):
+        if fullname in {f"triton_mlir._mlir_libs.{m}" for m in modules}:
+            loader = importlib.machinery.ExtensionFileLoader(
+                fullname, str(_triton_mod_path)
+            )
+            return importlib.util.spec_from_loader(fullname, loader)
+
+        return None
+
+
+sys.meta_path.insert(0, MyMetaFinder())
