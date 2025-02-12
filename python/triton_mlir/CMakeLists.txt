@@ -20,8 +20,7 @@ include_directories(${TRITON_SOURCE_DIR}/third_party/proton/dialect/include/Dial
 set(CMAKE_C_VISIBILITY_PRESET "hidden")
 set(CMAKE_CXX_VISIBILITY_PRESET "hidden")
 set(CMAKE_VISIBILITY_INLINES_HIDDEN ON)
-set(MLIR_BINDINGS_PYTHON_NB_DOMAIN "triton_mlir;NB_SHARED" CACHE STRING "" FORCE)
-set(MLIR_DISABLE_CONFIGURE_PYTHON_DEV_PACKAGES ON CACHE BOOL "" FORCE)
+set(MLIR_BINDINGS_PYTHON_NB_DOMAIN "triton_mlir" CACHE STRING "" FORCE)
 
 ################################################################################
 # Sources
@@ -77,189 +76,183 @@ declare_mlir_dialect_python_bindings(
     "../../../third_party/amd/include/Dialect/TritonAMDGPU/IR/TritonAMDGPUAttrDefs.td"
   DIALECT_NAME proton)
 
-set(embed_capi_link_libs
-  MLIRCAPIIR
-  # MLIRCAPIExecutionEngine
-  MLIRCAPIDebug
-  MLIRCAPIInterfaces
-  MLIRCAPITransforms
-  MLIRCAPITarget
-  # MLIRCAPIConversion
-  MLIRCAPIArith
-  MLIRCAPIAsync
-  MLIRCAPIControlFlow
-  MLIRCAPIEmitC
-  MLIRCAPIMath
-  MLIRCAPIMemRef
-  MLIRCAPIGPU
-  MLIRCAPIIRDL
-  MLIRCAPILLVM
-  MLIRCAPILinalg
-  MLIRCAPIMLProgram
-  MLIRCAPINVVM
-  MLIRCAPIROCDL
-  MLIRCAPISCF
-  MLIRCAPIShape
-  MLIRCAPISparseTensor
-  MLIRCAPIFunc
-  MLIRCAPISPIRV
-  MLIRCAPITensor
-  MLIRCAPITransformDialect
-  MLIRCAPITransformDialectTransforms
-  MLIRCAPIQuant
-  MLIRCAPIOpenMP
-  MLIRCAPIPDL
-  MLIRCAPIVector
-  TritonCAPI
-)
+configure_file(
+  "${CMAKE_CURRENT_LIST_DIR}/triton_mlir/__init__.py.in"
+  "${CMAKE_CURRENT_LIST_DIR}/triton_mlir/__init__.py"
+  @ONLY)
 
-declare_mlir_python_extension(TritonPythonSources.site_initialize_0
-  PYTHON_BINDINGS_LIBRARY nanobind
-  MODULE_NAME _site_initialize_0
-  ADD_TO_PARENT TritonPythonSources
-  OUTPUT_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/triton_mlir/_mlir_libs"
-  SOURCES
-    triton_mlir/site_initialize_0.cpp
-  PRIVATE_LINK_LIBS
-    LLVMSupport
-  EMBED_CAPI_LINK_LIBS
-    ${embed_capi_link_libs}
+get_property(_dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)
+get_property(_translation_libs GLOBAL PROPERTY MLIR_TRANSLATION_LIBS)
+get_property(_conversion_libs GLOBAL PROPERTY MLIR_CONVERSION_LIBS)
+get_property(_extension_libs GLOBAL PROPERTY MLIR_EXTENSION_LIBS)
+get_property(_triton_libs GLOBAL PROPERTY TRITON_LIBS)
+get_property(_mlir_upstream_capi_libs GLOBAL PROPERTY MLIR_UPSTREAM_CAPI_LIBS)
+
+set(_libs
+  TritonIR
+  TritonGPUIR
+  TritonAMDGPUIR
+  TritonAnalysis
+  TritonGPUTransforms
+  TritonAMDGPUToLLVM
+  TritonAMDUtils
+  TritonAMDGPUTransforms
+  TritonAMDGPUDialectToLLVM
+  TritonNVIDIAGPUToLLVM
+  TritonTestAnalysis
+  TritonTestDialectTritonGPU
+  NVGPUIR
+  NVGPUToLLVM
+
+  ${_dialect_libs}
+  ${_translation_libs}
+  ${_conversion_libs}
+  ${_extension_libs}
+  ${_triton_libs}
+  ${_mlir_upstream_capi_libs}
+
+  MLIRBuiltinToLLVMIRTranslation
+  MLIRLLVMToLLVMIRTranslation
+
+  # LLVM
+  LLVMSupport
+  LLVMTargetParser
+  LLVMCore
+  LLVMPasses
+  LLVMMC
+  LLVMMCParser
+  LLVMMCDisassembler
+
+  # AMDGPU
+  LLVMAMDGPUCodeGen
+  LLVMAMDGPUAsmParser
+  LLVMAMDGPUDisassembler
+  LLVMAMDGPUTargetMCA
+  LLVMAMDGPUDesc
+  LLVMAMDGPUInfo
+  LLVMAMDGPUUtils
+  # NVPTX
+  LLVMNVPTXCodeGen
+  LLVMNVPTXDesc
+  LLVMNVPTXInfo
 )
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
+  list(APPEND _libs
+    LLVMX86Info
+    LLVMX86CodeGen
+    LLVMX86AsmParser
+    LLVMX86Disassembler)
+elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64")
+  list(APPEND _libs
+    LLVMAArch64Info
+    LLVMAArch64Desc
+    LLVMAArch64CodeGen
+    LLVMAArch64AsmParser
+    LLVMAArch64Disassembler)
+endif()
+
+# Dig out all of the upstream cpp source files associated with the C extension modules.
+set(_python_dialect_sources
+  async
+  gpu
+  linalg
+  llvm
+  pdl
+  quant
+  sparse_tensor
+  transform
+)
+list(TRANSFORM _python_dialect_sources PREPEND "MLIRPythonSources.Dialects.")
+_flatten_mlir_python_targets(mlir_python_sources MLIRPythonSources ${_python_dialect_sources})
+set(_mlir_python_cpp_sources)
+foreach(s ${mlir_python_sources})
+  get_target_property(_sources ${s} INTERFACE_SOURCES)
+  if(NOT DEFINED MLIR_INSTALL_PREFIX)
+    string(REGEX MATCH "<BUILD_INTERFACE:(.+)>;" _sources "${_sources}")
+    set(_sources ${CMAKE_MATCH_1})
+  endif()
+  list(FILTER _sources INCLUDE REGEX "\.cpp$")
+  if(_sources)
+    list(APPEND _mlir_python_cpp_sources ${_sources})
+  endif()
+endforeach()
+
+set(_uninstalled
+  NVGPUIR
+  NVGPUToLLVM
+  ProtonIR
+  TritonAMDGPUDialectToLLVM
+  TritonAMDGPUIR
+  TritonAMDGPUToLLVM
+  TritonAMDGPUTransforms
+  TritonAMDUtils
+  TritonAnalysis
+  TritonGPUIR
+  TritonGPUToLLVM
+  TritonGPUTransforms
+  TritonIR
+  TritonLLVMIR
+  TritonNVIDIAGPUToLLVM
+  TritonNvidiaGPUIR
+  TritonNvidiaGPUTransforms
+  TritonProtonToLLVM
+  TritonToTritonGPU
+  TritonTools
+  TritonTransforms
+  f2reduce
+)
+install(TARGETS ${_uninstalled} EXPORT MLIRTargets)
 
 declare_mlir_python_extension(TritonPythonSources.Extension
   PYTHON_BINDINGS_LIBRARY nanobind
-  MODULE_NAME _TritonExtension
+  ROOT_DIR "/"
+  MODULE_NAME _triton
   ADD_TO_PARENT TritonPythonSources
   OUTPUT_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/triton_mlir/_mlir_libs"
   SOURCES
-    triton_mlir/TritonExtension.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/triton_mlir/TritonExtension.cpp
+    "${_mlir_python_cpp_sources}"
   PRIVATE_LINK_LIBS
-    LLVMSupport
-  EMBED_CAPI_LINK_LIBS
-    ${embed_capi_link_libs}
+    ${_libs}
 )
 
-################################################################################
-# Common CAPI
-################################################################################
-
-add_mlir_python_common_capi_library(TritonPythonCAPI
-  INSTALL_COMPONENT TritonPythonModules
-  INSTALL_DESTINATION python_packages/triton_mlir/_mlir_libs
-  OUTPUT_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/triton_mlir/_mlir_libs"
-  RELATIVE_INSTALL_ROOT "../../.."
-  DECLARED_SOURCES
-    TritonPythonSources
-    # TODO: Remove this in favor of showing fine grained registration once
-    # available.
-    # MLIRPythonExtension.RegisterEverything
-    MLIRPythonSources.Core
-)
-target_link_libraries(TritonPythonCAPI PRIVATE TritonCAPI)
-if(APPLE)
-  target_link_options(TritonPythonCAPI PRIVATE "LINKER:-u,_populateTritonExtension")
-elseif(UNIX)
-  target_link_options(TritonPythonCAPI PRIVATE "LINKER:-u,populateTritonExtension")
+if(DEFINED MLIR_INSTALL_PREFIX)
+  set(PYBINDINGS_SRC "${MLIR_INSTALL_PREFIX}/src/python/MLIRPythonExtension.Core")
+  target_include_directories(
+    TritonPythonSources.Extension
+    INTERFACE $<BUILD_INTERFACE:${PYBINDINGS_SRC}>
+  )
 endif()
 
-################################################################################
-# Instantiation of all Python modules
-################################################################################
+# Kill all of the dependencies (mlir_python_DEPENDS) on cpp sources in the dialect build targets
+# so the C extension modules don't get built but the Python sources do get installed.
+_flatten_mlir_python_targets(mlir_python_sources_deps MLIRPythonSources)
+list(FILTER mlir_python_sources_deps INCLUDE REGEX "^MLIRPythonSources.Dialects")
+list(FILTER mlir_python_sources_deps EXCLUDE REGEX "^MLIRPythonSources.Dialects.amdgpu")
+list(FILTER mlir_python_sources_deps EXCLUDE REGEX "^MLIRPythonSources.Dialects.nvgpu")
+foreach(t ${mlir_python_sources_deps})
+  set_property(TARGET ${t} PROPERTY mlir_python_DEPENDS "")
+endforeach()
 
 add_mlir_python_modules(TritonPythonModules
   ROOT_PREFIX "${CMAKE_CURRENT_LIST_DIR}/triton_mlir"
   INSTALL_PREFIX "python_packages/triton_mlir"
   DECLARED_SOURCES
-    TritonPythonSources
-    # MLIRPythonExtension.RegisterEverything
-    MLIRPythonSources.Core
+    ${mlir_python_sources_deps}
     MLIRPythonSources.Core.Python
-    MLIRPythonSources.Core.Python.Extras
-    MLIRPythonSources.Dialects.affine
-    # MLIRPythonSources.Dialects.amdgpu
-    MLIRPythonSources.Dialects.arith
-    MLIRPythonSources.Dialects.async
-    MLIRPythonSources.Dialects.bufferization
-    MLIRPythonSources.Dialects.bufferization_transform
-    MLIRPythonSources.Dialects.builtin
-    MLIRPythonSources.Dialects.cf
-    MLIRPythonSources.Dialects.complex
-    MLIRPythonSources.Dialects.func
-    MLIRPythonSources.Dialects.gpu
-    MLIRPythonSources.Dialects.gpu_transform
-    MLIRPythonSources.Dialects.index
-    MLIRPythonSources.Dialects.linalg
-    MLIRPythonSources.Dialects.llvm
-    MLIRPythonSources.Dialects.loop_transform
-    MLIRPythonSources.Dialects.math
-    MLIRPythonSources.Dialects.memref
-    MLIRPythonSources.Dialects.memref_transform
-    MLIRPythonSources.Dialects.ml_program
-    # MLIRPythonSources.Dialects.nvgpu
-    # MLIRPythonSources.Dialects.nvgpu_transform
-    MLIRPythonSources.Dialects.nvvm
-    MLIRPythonSources.Dialects.omp
-    MLIRPythonSources.Dialects.pdl
-    MLIRPythonSources.Dialects.quant
-    MLIRPythonSources.Dialects.rocdl
-    MLIRPythonSources.Dialects.scf
-    MLIRPythonSources.Dialects.shape
-    MLIRPythonSources.Dialects.sparse_tensor
-    MLIRPythonSources.Dialects.sparse_tensor_transform
-    MLIRPythonSources.Dialects.spirv
-    MLIRPythonSources.Dialects.structured_transform
-    MLIRPythonSources.Dialects.tensor
-    MLIRPythonSources.Dialects.tensor_transform
-    MLIRPythonSources.Dialects.tosa
-    MLIRPythonSources.Dialects.transform
-    MLIRPythonSources.Dialects.transform.extras
-    MLIRPythonSources.Dialects.transform.interpreter
-    MLIRPythonSources.Dialects.transform_pdl_extension
-    MLIRPythonSources.Dialects.vector
-    MLIRPythonSources.Dialects.vector_transform
-    # MLIRPythonSources.ExecutionEngine
-  COMMON_CAPI_LINK_LIBS
-    TritonPythonCAPI
+    TritonPythonSources
 )
 
-target_link_libraries(TritonCAPI PUBLIC nanobind-triton_mlir Python::Module)
-target_link_options(nanobind-triton_mlir PRIVATE
-  $<$<PLATFORM_ID:Linux>:-fexceptions -frtti>
-  $<$<PLATFORM_ID:Darwin>:-fexceptions -frtti>
-  $<$<PLATFORM_ID:Windows>:/EHsc /GR>)
-
-macro(remove_flag_from_target _target _flag)
-  get_target_property(_target_cxx_flags ${_target} COMPILE_OPTIONS)
-  if(_target_cxx_flags)
-    list(REMOVE_ITEM _target_cxx_flags ${_flag})
-    set_target_properties(${_target} PROPERTIES COMPILE_OPTIONS "${_target_cxx_flags}")
-  endif()
-  get_target_property(_target_cxx_flags ${_target} COMPILE_FLAGS)
-  if(_target_cxx_flags)
-    list(REMOVE_ITEM _target_cxx_flags ${_flag})
-    set_target_properties(${_target} PROPERTIES COMPILE_FLAGS "${_target_cxx_flags}")
-  endif()
-endmacro()
-
-set(tgts
-  _mlir
-  _mlirAsyncPasses
-  _mlirDialectsGPU
-  _mlirDialectsLinalg
-  _mlirDialectsLLVM
-  _mlirDialectsPDL
-  _mlirDialectsQuant
-  _mlirDialectsSparseTensor
-  _mlirDialectsTransform
-  # _mlirExecutionEngine
-  _mlirGPUPasses
-  _mlirLinalgPasses
-  _mlirSparseTensorPasses
-  _mlirTransformInterpreter
-  _site_initialize_0
+add_dependencies(TritonPythonModules.extension._triton.dso
+  TritonTableGen
+  TritonTransformsIncGen
+  TritonCombineIncGen
+  TritonGPUTableGen
+  TritonGPUAttrDefsIncGen
+  TritonGPUTypeInterfacesIncGen
+  TritonGPUTransformsIncGen
+  TritonNvidiaGPUTableGen
+  TritonNvidiaGPUAttrDefsIncGen
+  TritonNvidiaGPUTransformsIncGen
+  TritonNvidiaGPUOpInterfacesIncGen
 )
-
-foreach(tgt ${tgts})
-  remove_flag_from_target("TritonPythonModules.extension.${tgt}.dso" "-fPIC")
-endforeach()
-remove_flag_from_target(TritonCAPI "-fPIC")

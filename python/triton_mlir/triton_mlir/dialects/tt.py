@@ -7,7 +7,7 @@ from typing import Optional, Sequence
 # noinspection PyUnresolvedReferences
 from ._tt_enum_gen import *
 from ._tt_ops_gen import *
-from .._mlir_libs._TritonExtension import *
+from .._mlir_libs._triton import *
 
 from . import arith
 from ..extras import types as _T

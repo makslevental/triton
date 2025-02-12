@@ -955,6 +955,7 @@ def make_hsaco(src, options):
     if strtobool(os.environ.get("TRITON_ENABLE_ASAN", "False")):
         target_features = "+xnack"
     hsaco = amd.assemble_amdgcn(src, options.arch, target_features)
+    return hsaco
 
     rocm_path = HIPBackend.path_to_rocm_lld()
     with tempfile.NamedTemporaryFile() as tmp_out:
