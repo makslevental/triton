@@ -1,5 +1,3 @@
-import threading
-
 import pytest
 
 # this needs to be below the triton_mlir_bindings

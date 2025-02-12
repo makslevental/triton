@@ -1,18 +1,17 @@
+import ctypes
 import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Tuple, Any
+from typing import Tuple
 
 from triton_mlir.extras.runtime.passes import Pipeline
 from triton_mlir.passmanager import PassManager
 from triton_mlir.ir import Module
-from triton_mlir.dialects.tt import llvm as tt_llvm
-import llvm
+from triton_mlir.dialects.tt import llvm, amd
 
 
 class TritonPipeline(Pipeline):
-
     def Func(self, p: "Pipeline"):
         return self.Nested("tt.func", p)
 
@@ -710,7 +709,7 @@ def make_ttgir(mod: Module, options: HIPOptions):
     if options.instruction_sched_variant == "local-prefetch":
         stream_prefetch = True
 
-    if tt_llvm.has_matrix_core_feature(options.arch):
+    if llvm.has_matrix_core_feature(options.arch):
         assert options.num_stages != 0, (
             "Triton AMD backend pipeliner has been updated. "
             "We used to trigger software pipelining with "
@@ -730,7 +729,7 @@ def make_ttgir(mod: Module, options: HIPOptions):
         .tritongpu_remove_layout_conversions()
         .tritongpu_reduce_data_duplication()
     )
-    if tt_llvm.has_matrix_core_feature(options.arch):
+    if llvm.has_matrix_core_feature(options.arch):
         p = p.tritonamdgpu_reorder_instructions()
         use_block_pingpong = strtobool(
             os.getenv("TRITON_HIP_USE_BLOCK_PINGPONG", "False")
@@ -738,7 +737,7 @@ def make_ttgir(mod: Module, options: HIPOptions):
         if use_block_pingpong and options.num_stages == 2:
             p = p.tritonamdgpu_block_pingpong()
 
-    use_buffer_ops = os.environ.get("AMDGCN_USE_BUFFER_OPS", "0") == "1"
+    use_buffer_ops = strtobool(os.environ.get("AMDGCN_USE_BUFFER_OPS", "False"))
     if use_buffer_ops:
         p = (
             p.tritonamdgpu_canonicalize_pointers()
@@ -855,95 +854,39 @@ def make_llir(mod, options: HIPOptions):
         p = p.triton_amdgpu_lower_insert_instruction_sched_hints(
             arch=options.arch, num_stages=options.num_stages
         )
-    if os.environ.get("TRITON_DISABLE_LINE_INFO", "0") == "0":
+    if not strtobool(os.environ.get("TRITON_DISABLE_LINE_INFO", "False")):
         p = p.ensure_debug_info_scope_on_llvm_func()
     p = p.convert_builtin_func_to_llvm(__HIP_FTZ)
     pm = PassManager.parse(p.materialize())
     pm.run(mod.operation)
 
     # LLVM-IR (MLIR) -> LLVM-IR (LLVM)
-    llvm.initialize_all_targets()
-    llvm.initialize_all_target_infos()
-    llvm.initialize_all_target_m_cs()
-    llvm.initialize_all_asm_parsers()
-    llvm.initialize_all_asm_printers()
-
-    llvm_mod = tt_llvm.translate_to_llvmir(mod)
-    llvm.set_target(llvm_mod, AMD_TRIPLE)
-
+    llvm.init_targets()
+    context = llvm.context()
+    llvm_mod = llvm.to_module(mod.operation, context)
+    amd.attach_target_triple(llvm_mod)
     target_features = ""
     if strtobool(os.environ.get("TRITON_ENABLE_ASAN", "False")):
         target_features = "+xnack"
-
-    target = llvm.get_target_from_triple(AMD_TRIPLE)
-    tm = llvm.create_target_machine(
-        target,
-        AMD_TRIPLE,
-        options.arch,
-        target_features,
-        llvm.CodeGenOptLevel.code_gen_level_none,
-        llvm.RelocMode.reloc_pic,
-        llvm.CodeModel.default,
-    )
-    llvm.set_module_data_layout(llvm_mod, llvm.create_target_data_layout(tm))
+    llvm.attach_datalayout(llvm_mod, amd.TARGET_TRIPLE, options.arch, target_features)
 
     # Set various control constants on the LLVM module so that device
     # libraries can resolve references to them.
-    isav = tt_llvm.get_isa_version(options.arch)
-    add_control_constant(
-        llvm_mod,
-        "__oclc_ISA_version",
-        bitwidth=32,
-        value=isav.major * 1000 + isav.minor * 100 + isav.stepping,
-    )
-    abiv = 500
-    add_control_constant(
-        llvm_mod,
-        "__oclc_ABI_version",
-        bitwidth=32,
-        value=500,
-    )
-    mod_flag = "amdhsa_code_object_version"
-    tt_llvm.add_module_flag(llvm_mod, mod_flag, abiv)
-    add_control_constant(
-        llvm_mod,
-        "__oclc_finite_only_opt",
-        bitwidth=8,
-        value=False,
-    )
-    add_control_constant(
-        llvm_mod,
-        "__oclc_correctly_rounded_sqrt32",
-        bitwidth=8,
-        value=True,
-    )
-    add_control_constant(
-        llvm_mod,
-        "__oclc_unsafe_math_opt",
-        bitwidth=8,
-        value=False,
-    )
-    add_control_constant(
-        llvm_mod,
-        "__oclc_wavefrontsize64",
-        bitwidth=8,
-        value=options.warp_size == 64,
+    amd.set_isa_version(llvm_mod, options.arch)
+    amd.set_abi_version(llvm_mod, 500)
+    amd.set_bool_control_constant(llvm_mod, "__oclc_finite_only_opt", False)
+    amd.set_bool_control_constant(llvm_mod, "__oclc_correctly_rounded_sqrt32", True)
+    amd.set_bool_control_constant(llvm_mod, "__oclc_unsafe_math_opt", False)
+    amd.set_bool_control_constant(
+        llvm_mod, "__oclc_wavefrontsize64", options.warp_size == 64
     )
 
     # Set kernel attributes first given this may affect later optimizations.
-    fn = llvm.get_first_function(llvm_mod)
-    for i in range(10):
-        if not llvm.is_declaration(fn):
-            break
-        fn = llvm.get_next_function(fn)
-    else:
-        raise RuntimeError("couldn't find kernel")
+    fns = [fn for fn in llvm_mod.get_functions() if not fn.is_declaration()]
     # The public kernel should be kernel 0.
-    llvm.set_function_call_conv(fn, tt_llvm.get_calling_conv_amdgpu_kernel())
-    add_string_attr_to_function(
-        fn,
-        "amdgpu-flat-work-group-size",
-        f"1,{options.num_warps*options.warp_size}",
+    fns[0].set_calling_conv(amd.CALLING_CONV_AMDGPU_KERNEL)
+    fns[0].add_fn_attr(
+        "amdgpu-flat-work-group-size", f"1,{options.num_warps*options.warp_size}"
     )
     # LLVM AMDGPU backend supports the attribute "amdgpu-waves-per-eu"="<min>[, <max>]".
     # This attribute may be attached to a kernel function definition and is an optimization hint.
@@ -952,92 +895,64 @@ def make_llir(mod, options: HIPOptions):
     # If <max> is omitted, then there is no restriction on the maximum number of waves per EU other than
     # the one dictated by the hardware for which the kernel is compiled. Passing 0, 0 as <min>, <max>
     # implies the default behavior (no limits).
-    add_string_attr_to_function(fn, "amdgpu-waves-per-eu", f"{options.waves_per_eu}")
+    fns[0].add_fn_attr("amdgpu-waves-per-eu", f"{options.waves_per_eu}")
     denormal_mode = "preserve-sign" if options.allow_flush_denorm else "ieee"
-    add_string_attr_to_function(fn, "denormal-fp-math-f32", denormal_mode)
-    if os.environ.get("TRITON_ENABLE_ASAN", "0") == "1":
-        add_string_attr_to_function(fn, "target-features", "+xnack")
-        add_string_attr_to_function(fn, "target-features", "sanitize_address")
+    fns[0].add_fn_attr("denormal-fp-math-f32", denormal_mode)
+    if strtobool(os.environ.get("TRITON_ENABLE_ASAN", "False")):
+        fns[0].add_fn_target_feature("+xnack")
+        fns[0].add_fn_asan_attr()
 
     # Hint the compiler that we'd like the firmware to set the kernel arguments
     # to user SGPRs so that the kernel does not need to s_load its arguments
     # from memory.
-    in_reg = "inreg"
-    for i in range(llvm.count_params(fn)):
-        attrs = llvm.get_attributes_at_index(fn, i)
-        if len(attrs):
-            raise NotImplemented("existing attrs not supported/not checked")
-        add_enum_attr_to_function_arg(fn, i, in_reg)
+    amd.set_all_fn_arg_inreg(fns[0])
 
-    enable_asan = strtobool(os.environ.get("TRITON_ENABLE_ASAN", "False"))
-    if enable_asan:
-        raise NotImplementedError()
-
+    if strtobool(os.environ.get("TRITON_ENABLE_ASAN", "False")):
         default_libdir = Path(__file__).parent / "lib"
         paths = [
             str(default_libdir / "asanrtl.bc"),
             str(default_libdir / "ocml.bc"),
             str(default_libdir / "ockl.bc"),
         ]
-        tt_llvm.link_extern_libs(llvm_mod, paths)
+        llvm.link_extern_libs(llvm_mod, paths)
     elif options.extern_libs:
-        raise NotImplementedError()
-
         paths = [
             path
             for (name, path) in options.extern_libs
             if amd.need_extern_lib(llvm_mod, name)
         ]
-        tt_llvm.link_extern_libs(llvm_mod, paths)
+        llvm.link_extern_libs(llvm_mod, paths)
 
-    tt_llvm.init_all_targets()
-    llvm_mod = tt_llvm.optimize_module(
-        llvm_mod,
-        flags=[],
-        arch=options.arch,
-        features="",
-        opt_level=tt_llvm.OptimizationLevel.O3,
-        enable_fp_fusion=options.enable_fp_fusion,
-        llvm_ir_enable_dump=strtobool(os.getenv("LLVM_IR_ENABLE_DUMP", "False")),
-        enable_address_sanitizer=enable_asan,
-        disable_llvm_opt=strtobool(os.getenv("DISABLE_LLVM_OPT", "False")),
+    llvm.optimize_module(
+        llvm_mod, llvm.OPTIMIZE_O3, options.arch, "", [], options.enable_fp_fusion
     )
 
-    tt_llvm.cleanup_bitcode_metadata(llvm_mod)
+    amd.cleanup_bitcode_metadata(llvm_mod)
     # Disable inlining of print related functions,
     # because inlining of these function could slow down compilation significantly
-    prefixes = {"__ockl_fprintf", "__ockl_printf"}
-    fn = llvm.get_first_function(llvm_mod)
-    for i in range(10):
-        name = llvm.get_value_name(fn)
-        if not name:
-            continue
-        if any(name.startswith(p) for p in prefixes):
-            add_enum_attr_to_function(fn, "noinline")
-
+    amd.disable_print_inline(llvm_mod)
     return llvm_mod
 
 
-def make_amdgcn(src, metadata, options):
-    # Find kernel names (there should only be one)
-    # We get the name at the last possible step to accomodate `triton.compile`
-    # on user-provided LLVM
-    names = re.findall(r"define amdgpu_kernel void @([a-zA-Z_][a-zA-Z0-9_]*)", src)
-    assert len(names) == 1
-    metadata["name"] = names[0]
-    # llvm -> hsaco
+def make_amdgcn(llvm_mod, options):
     amdgcn = llvm.translate_to_asm(
-        src, amd.TARGET_TRIPLE, options.arch, "", [], options.enable_fp_fusion, False
+        llvm_mod,
+        amd.TARGET_TRIPLE,
+        options.arch,
+        "",
+        [],
+        options.enable_fp_fusion,
+        False,
     )
-    if os.environ.get("AMDGCN_ENABLE_DUMP", "0") == "1":
+    if strtobool(os.environ.get("AMDGCN_ENABLE_DUMP", "False")):
         print("// -----// AMDGCN Dump //----- //")
         print(amdgcn)
     return amdgcn
 
 
-def make_hsaco(src, metadata, options):
+def make_hsaco(src, options):
     target_features = ""
-    if os.environ.get("TRITON_ENABLE_ASAN", "0") == "1":
+    if strtobool(os.environ.get("TRITON_ENABLE_ASAN", "False")):
         target_features = "+xnack"
     hsaco = amd.assemble_amdgcn(src, options.arch, target_features)
 
