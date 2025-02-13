@@ -1,14 +1,13 @@
-import ctypes
 import os
-import re
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Tuple
 
-from triton_mlir.extras.runtime.passes import Pipeline
-from triton_mlir.passmanager import PassManager
-from triton_mlir.ir import Module
 from triton_mlir.dialects.tt import llvm, amd
+from triton_mlir.extras.runtime.passes import Pipeline
+from triton_mlir.ir import Module
+from triton_mlir.passmanager import PassManager
 
 
 class TritonPipeline(Pipeline):
@@ -886,7 +885,7 @@ def make_llir(mod, options: HIPOptions):
     # The public kernel should be kernel 0.
     fns[0].set_calling_conv(amd.CALLING_CONV_AMDGPU_KERNEL)
     fns[0].add_fn_attr(
-        "amdgpu-flat-work-group-size", f"1,{options.num_warps*options.warp_size}"
+        "amdgpu-flat-work-group-size", f"1,{options.num_warps * options.warp_size}"
     )
     # LLVM AMDGPU backend supports the attribute "amdgpu-waves-per-eu"="<min>[, <max>]".
     # This attribute may be attached to a kernel function definition and is an optimization hint.
@@ -955,24 +954,11 @@ def make_hsaco(src, options):
     if strtobool(os.environ.get("TRITON_ENABLE_ASAN", "False")):
         target_features = "+xnack"
     hsaco = amd.assemble_amdgcn(src, options.arch, target_features)
-    return hsaco
-
-    rocm_path = HIPBackend.path_to_rocm_lld()
     with tempfile.NamedTemporaryFile() as tmp_out:
         with tempfile.NamedTemporaryFile() as tmp_in:
             with open(tmp_in.name, "wb") as fd_in:
                 fd_in.write(hsaco)
-            subprocess.check_call(
-                [
-                    rocm_path,
-                    "-flavor",
-                    "gnu",
-                    "-shared",
-                    tmp_in.name,
-                    "-o",
-                    tmp_out.name,
-                ]
-            )
+            amd.link_hsaco(tmp_in.name, tmp_out.name)
         with open(tmp_out.name, "rb") as fd_out:
             ret = fd_out.read()
     return ret
