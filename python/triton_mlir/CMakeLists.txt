@@ -81,6 +81,21 @@ configure_file(
   "${CMAKE_CURRENT_LIST_DIR}/triton_mlir/__init__.py"
   @ONLY)
 
+add_custom_command(OUTPUT "${CMAKE_CURRENT_LIST_DIR}/triton_mlir/__init__.py"
+  COMMAND ${Python3_EXECUTABLE} -c "
+    f = open('triton_mlir/__init__.py.in', 'r').read();
+    f = f.replace('@PYTHON_MODULE_EXTENSION@', '${PYTHON_MODULE_EXTENSION}');
+    open('triton_mlir/__init__.py', 'w').write(f)"
+  WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
+  COMMENT "generating ${CMAKE_CURRENT_LIST_DIR}/triton_mlir/__init__.py"
+  VERBATIM
+)
+
+add_custom_target (
+  __init__py DEPENDS
+  "${CMAKE_CURRENT_LIST_DIR}/triton_mlir/__init__.py"
+)
+
 get_property(_dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)
 get_property(_translation_libs GLOBAL PROPERTY MLIR_TRANSLATION_LIBS)
 get_property(_conversion_libs GLOBAL PROPERTY MLIR_CONVERSION_LIBS)
@@ -122,6 +137,8 @@ set(_libs
   LLVMMC
   LLVMMCParser
   LLVMMCDisassembler
+  lldCommon
+  lldELF
 
   # AMDGPU
   LLVMAMDGPUCodeGen
@@ -216,6 +233,11 @@ declare_mlir_python_extension(TritonPythonSources.Extension
     ${_libs}
 )
 
+set(LLD_INCLUDE_DIR "${LLVM_EXTERNAL_LLD_SOURCE_DIR}/include")
+target_include_directories(
+  TritonPythonSources.Extension
+  INTERFACE $<BUILD_INTERFACE:${LLD_INCLUDE_DIR}>
+)
 if(DEFINED MLIR_INSTALL_PREFIX)
   set(PYBINDINGS_SRC "${MLIR_INSTALL_PREFIX}/src/python/MLIRPythonExtension.Core")
   target_include_directories(
@@ -255,4 +277,5 @@ add_dependencies(TritonPythonModules.extension._triton.dso
   TritonNvidiaGPUAttrDefsIncGen
   TritonNvidiaGPUTransformsIncGen
   TritonNvidiaGPUOpInterfacesIncGen
+  __init__py
 )
