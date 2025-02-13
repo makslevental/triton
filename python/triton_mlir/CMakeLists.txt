@@ -17,6 +17,11 @@ include_directories(${TRITON_BINARY_DIR}/third_party/proton/include)
 # this is for tablegen
 include_directories(${TRITON_SOURCE_DIR}/third_party/proton/dialect/include/Dialect/Proton/IR)
 
+if(DEFINED MLIR_INSTALL_PREFIX)
+  find_package(LLD REQUIRED CONFIG PATHS ${MLIR_DIR})
+  include_directories(${LLD_INCLUDE_DIRS})
+endif()
+
 set(CMAKE_C_VISIBILITY_PRESET "hidden")
 set(CMAKE_CXX_VISIBILITY_PRESET "hidden")
 set(CMAKE_VISIBILITY_INLINES_HIDDEN ON)
@@ -96,6 +101,7 @@ add_custom_target (
   "${CMAKE_CURRENT_LIST_DIR}/triton_mlir/__init__.py"
 )
 
+get_property(_all_libs GLOBAL PROPERTY MLIR_ALL_LIBS)
 get_property(_dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)
 get_property(_translation_libs GLOBAL PROPERTY MLIR_TRANSLATION_LIBS)
 get_property(_conversion_libs GLOBAL PROPERTY MLIR_CONVERSION_LIBS)
@@ -119,6 +125,7 @@ set(_libs
   NVGPUIR
   NVGPUToLLVM
 
+  ${_all_libs}
   ${_dialect_libs}
   ${_translation_libs}
   ${_conversion_libs}
@@ -273,6 +280,7 @@ add_dependencies(TritonPythonModules.extension._triton.dso
   TritonGPUAttrDefsIncGen
   TritonGPUTypeInterfacesIncGen
   TritonGPUTransformsIncGen
+  TritonAMDGPUTransformsIncGen
   TritonNvidiaGPUTableGen
   TritonNvidiaGPUAttrDefsIncGen
   TritonNvidiaGPUTransformsIncGen

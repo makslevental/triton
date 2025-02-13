@@ -450,6 +450,8 @@ static bool lldInvoke(const char *inPath, const char *outPath) {
   return !s.retCode && s.canRunAgain;
 }
 
+static const std::string amdTargetTriple = "amdgcn-amd-amdhsa";
+
 void populateTritonExtension(nanobind::module_ &m) {
 
   m.def("get_ptr_type_typeid",
@@ -741,14 +743,12 @@ void populateTritonExtension(nanobind::module_ &m) {
       },
       nb::rv_policy::take_ownership);
 
-  const char *const amdTargetTriple = "amdgcn-amd-amdhsa";
-
   auto amd = m.def_submodule("amd");
   amd.attr("TARGET_TRIPLE") = amdTargetTriple;
   amd.attr("CALLING_CONV_AMDGPU_KERNEL") =
       static_cast<unsigned>(llvm::CallingConv::AMDGPU_KERNEL);
 
-  amd.def("attach_target_triple", [&amdTargetTriple](llvm::Module *module) {
+  amd.def("attach_target_triple", [](llvm::Module *module) {
     module->setTargetTriple(amdTargetTriple);
   });
 
@@ -823,8 +823,8 @@ void populateTritonExtension(nanobind::module_ &m) {
 
   amd.def(
       "assemble_amdgcn",
-      [&amdTargetTriple](const std::string &assembly, const std::string &arch,
-                         const std::string &features) {
+      [](const std::string &assembly, const std::string &arch,
+         const std::string &features) {
         std::string error;
 
         llvm::Triple triple(amdTargetTriple);
