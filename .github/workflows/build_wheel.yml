@@ -87,10 +87,14 @@ jobs:
           LLVM_URL="$($python3_command setup.py --llvm-url)" 
           popd
           
-          curl -sLO $LLVM_URL
-          LLVM_NAME=$(basename "$LLVM_URL" ".tar.gz")
-          tar xf $LLVM_NAME.tar.gz
-          export LLVM_INSTALL_DIR="$PWD/$LLVM_NAME"
+          # curl -sLO $LLVM_URL
+          # LLVM_NAME=$(basename "$LLVM_URL" ".tar.gz")
+          # tar xf $LLVM_NAME.tar.gz
+          # export LLVM_INSTALL_DIR="$PWD/$LLVM_NAME"
+
+          pip -q download circt -f https://github.com/makslevental/circt/releases/expanded_assets/latest --no-deps
+          unzip -q circt*whl -d circt-install
+          export LLVM_INSTALL_DIR="$PWD/circt-install"
           export TRITON_SRC_DIR="$PWD"
           export TRITON_BUILD_DIR="$PWD/triton-build"
           export TRITON_INSTALL_DIR="$PWD/triton-install/triton-install"
