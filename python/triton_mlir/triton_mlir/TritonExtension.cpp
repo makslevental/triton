@@ -11,6 +11,7 @@
 #include "amd/include/TritonAMDGPUToLLVM/Passes.h"
 #include "amd/include/TritonAMDGPUTransforms/Passes.h"
 #include "lib/Target/LLVMIR/LLVMPasses.h"
+#include "lld/Common/Driver.h"
 #include "mlir-c/Target/LLVMIR.h"
 #include "mlir/Bindings/Python/NanobindAdaptors.h"
 #include "mlir/CAPI/IR.h"
@@ -440,6 +441,15 @@ bool hasMatrixCoreFeature(MlirStringRef arch) {
   }
 }
 
+LLD_HAS_DRIVER(elf)
+
+static bool lldInvoke(const char *inPath, const char *outPath) {
+  std::vector<const char *> args{"ld.lld", "-shared", inPath, "-o", outPath};
+  lld::Result s = lld::lldMain(args, llvm::outs(), llvm::errs(),
+                               {{lld::Gnu, &lld::elf::link}});
+  return !s.retCode && s.canRunAgain;
+}
+
 void populateTritonExtension(nanobind::module_ &m) {
 
   m.def("get_ptr_type_typeid",
@@ -568,25 +578,6 @@ void populateTritonExtension(nanobind::module_ &m) {
                 "function_list_iterator", s.begin(), s.end());
           },
           nb::keep_alive<0, 1>());
-
-  // llvm.def(
-  //     "to_module",
-  //     [](nb::object mod, llvm::LLVMContext &ctx) {
-  //       nanobind::object capsule =
-  //           nanobind::detail::mlirApiObjectToCapsule(mod.ptr());
-  //       nb::capsule caps = nb::borrow<nb::capsule>(capsule.ptr());
-  //       std::cout << caps.name() << std::endl;
-  //       std::cout << MLIR_PYTHON_CAPSULE_OPERATION << std::endl;
-  //       // assert(caps.name() == MLIR_PYTHON_CAPSULE_OPERATION);
-  //       const int rc = strcmp(caps.name(), MLIR_PYTHON_CAPSULE_OPERATION);
-  //       const char *rel = rc < 0 ? "precedes" : rc > 0 ? "follows" :
-  //       "equals"; printf("[%s] %s [%s]\n", caps.name(), rel,
-  //              MLIR_PYTHON_CAPSULE_OPERATION);
-  //       MlirOperation value = {caps.data()};
-  //       assert(!mlirOperationIsNull(value));
-  //       return mlir::translateModuleToLLVMIR(unwrap(value), ctx);
-  //     },
-  //     nb::keep_alive<0, 2>());
 
   llvm.def(
       "to_module",
@@ -893,6 +884,25 @@ void populateTritonExtension(nanobind::module_ &m) {
         return nb::bytes(rs.data(), rs.size());
       },
       nb::rv_policy::take_ownership);
+
+  amd.def("link_hsaco",
+          [](const std::string &inPath, const std::string &outPath) {
+            if (!lldInvoke(inPath.c_str(), outPath.c_str()))
+              throw std::runtime_error("couldn't link");
+          });
+}
+
+const char *HERE = "HERE";
+
+#include <dlfcn.h>
+static std::optional<std::string> getHere() {
+  Dl_info info;
+  if (dladdr(HERE, &info)) {
+    if (info.dli_fname) {
+      return {std::string(info.dli_fname)};
+    }
+  }
+  return {};
 }
 
 NB_MODULE(_triton, m) {

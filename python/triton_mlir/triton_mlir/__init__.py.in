@@ -15,31 +15,21 @@ _triton_mod_path = (
 )
 assert _triton_mod_path.exists(), f"couldn't find {_triton_mod_path}"
 
-modules = [
-    "_mlir",
-    "_mlirAsyncPasses",
-    "_mlirDialectsGPU",
-    "_mlirDialectsLinalg",
-    "_mlirDialectsLLVM",
-    "_mlirDialectsPDL",
-    "_mlirDialectsQuant",
-    "_mlirDialectsSparseTensor",
-    "_mlirDialectsTransform",
-    # "_mlirExecutionEngine"
-    "_mlirGPUPasses",
-    "_mlirLinalgPasses",
-    "_mlirSparseTensorPasses",
-    "_mlirTransformInterpreter",
-    "_site_initialize_0",
-]
 
 class MyMetaFinder(MetaPathFinder):
     def find_spec(self, fullname, path, target=None):
-        if fullname in {f"triton_mlir._mlir_libs.{m}" for m in modules}:
+        if fullname.startswith("triton_mlir._mlir_libs."):
             loader = importlib.machinery.ExtensionFileLoader(
                 fullname, str(_triton_mod_path)
             )
-            return importlib.util.spec_from_loader(fullname, loader)
+            spec = importlib.util.spec_from_loader(fullname, loader)
+
+            try:
+                importlib.util.module_from_spec(spec)
+                return spec
+            except ImportError as e:
+                assert e.msg.startswith(f"dynamic module does not define module export function (PyInit_")
+
 
         return None
 
