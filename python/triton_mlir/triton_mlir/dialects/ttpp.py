@@ -2,7 +2,6 @@
 from ..extras.dialects.ext import tensor
 from .arith import _is_integer_like_type
 from .tt import (
-    get_ptr_type_typeid,
     expand_dims,
     splat,
     broadcast_binary,
@@ -10,6 +9,7 @@ from .tt import (
     store,
     load,
 )
+from .._mlir_libs._triton.tt import get_ptr_type_typeid
 from ..extras.dialects.ext.arith import Scalar, constant, _binary_op
 from ..extras.dialects.ext.tensor import Tensor
 from ..extras.util import get_user_code_loc
