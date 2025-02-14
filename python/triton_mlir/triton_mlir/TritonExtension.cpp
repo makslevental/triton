@@ -12,7 +12,8 @@
 #include "amd/include/TritonAMDGPUTransforms/Passes.h"
 #include "lib/Target/LLVMIR/LLVMPasses.h"
 #include "lld/Common/Driver.h"
-#include "mlir-c/Target/LLVMIR.h"
+#include "mlir-c/IR.h"
+#include "mlir-c/Support.h"
 #include "mlir/Bindings/Python/NanobindAdaptors.h"
 #include "mlir/CAPI/IR.h"
 #include "mlir/CAPI/Registration.h"
@@ -454,26 +455,6 @@ static const std::string amdTargetTriple = "amdgcn-amd-amdhsa";
 
 void populateTritonExtension(nanobind::module_ &m) {
 
-  m.def("get_ptr_type_typeid",
-        []() { return tritonMlirPointerTypeGetTypeID(); });
-  mlir_type_subclass(m, "PointerType", tritonMlirTypeIsAPointerType,
-                     tritonMlirPointerTypeGetTypeID)
-      .def_staticmethod(
-          "of_pointee_type",
-          [](MlirType pointeeType, int addressSpace) {
-            return tritonMlirPointerTypeOfPointeeType(pointeeType,
-                                                      addressSpace);
-          },
-          "pointee_type"_a, "address_space"_a = 1)
-      .def("__pos__",
-           [](MlirType self) {
-             return tritonMlirPointerTypeOfPointeeType(self,
-                                                       /*addressSpace*/ 1);
-           })
-      .def_property_readonly("pointee_type", [](MlirType self) {
-        return tritonMlirPointerTypeGetPointeeType(self);
-      });
-
   auto llvm = m.def_submodule("llvm");
 
   llvm.def(
@@ -507,8 +488,8 @@ void populateTritonExtension(nanobind::module_ &m) {
       nb::class_<llvm::LLVMContext>(llvm, "context", nb::sig("class context()"))
           .def(nb::init<>());
 
-  auto sourceMgr =
-      nb::class_<llvm::SourceMgr>(llvm, "source_mgr").def(nb::init<>());
+  // auto sourceMgr =
+  //     nb::class_<llvm::SourceMgr>(llvm, "source_mgr").def(nb::init<>());
   auto llvmModule =
       nb::class_<llvm::Module>(llvm, "module", nb::sig("class module()"))
           .def(
@@ -571,7 +552,7 @@ void populateTritonExtension(nanobind::module_ &m) {
         return fn->getLinkage() == llvm::GlobalValue::ExternalLinkage;
       });
 
-  nb::class_<llvm::Module::FunctionListType>(m, "function_list")
+  nb::class_<llvm::Module::FunctionListType>(llvm, "function_list")
       .def(
           "__iter__",
           [](llvm::Module::FunctionListType &s) {
@@ -892,6 +873,31 @@ void populateTritonExtension(nanobind::module_ &m) {
           });
 }
 
+void populateTTDialect(nanobind::module_ &m) {
+  m.def("get_ptr_type_typeid",
+        []() { return tritonMlirPointerTypeGetTypeID(); });
+  mlir_type_subclass(m, "PointerType", tritonMlirTypeIsAPointerType,
+                     tritonMlirPointerTypeGetTypeID)
+      .def_staticmethod(
+          "of_pointee_type",
+          [](MlirType pointeeType, int addressSpace) {
+            return tritonMlirPointerTypeOfPointeeType(pointeeType,
+                                                      addressSpace);
+          },
+          "pointee_type"_a, "address_space"_a = 1)
+      .def("__pos__",
+           [](MlirType self) {
+             return tritonMlirPointerTypeOfPointeeType(self,
+                                                       /*addressSpace*/ 1);
+           })
+      .def_property_readonly("pointee_type", [](MlirType self) {
+        return tritonMlirPointerTypeGetPointeeType(self);
+      });
+}
+
+extern void populateEUDSLGen_ttgModule(nb::module_ &m);
+void populateTTGialect(nanobind::module_ &m) { populateEUDSLGen_ttgModule(m); }
+
 const char *HERE = "HERE";
 
 #include <dlfcn.h>
@@ -905,9 +911,59 @@ static std::optional<std::string> getHere() {
   return {};
 }
 
+extern void populateEUDSL_MLIRModule(nb::module_ &m);
+void populateMLIRModule(nb::module_ &m) {
+  populateEUDSL_MLIRModule(m);
+
+  m.def(
+      "unwrap_c_context", [](MlirContext context) { return unwrap(context); },
+      nb::rv_policy::reference);
+
+  m.def("wrap_context", [](mlir::MLIRContext *context) {
+    nanobind::object capsule = nanobind::steal<nanobind::object>(
+        mlirPythonContextToCapsule(wrap(context)));
+    return nanobind::module_::import_(MAKE_MLIR_PYTHON_QUALNAME("ir"))
+        .attr("Context")
+        .attr(MLIR_PYTHON_CAPI_FACTORY_ATTR)(capsule)
+        .release();
+  });
+
+  m.def("unwrap_c_type", [](MlirType type) { return unwrap(type); });
+
+  m.def("wrap_type", [](mlir::Type type) {
+    nanobind::object capsule =
+        nanobind::steal<nanobind::object>(mlirPythonTypeToCapsule(wrap(type)));
+    return nanobind::module_::import_(MAKE_MLIR_PYTHON_QUALNAME("ir"))
+        .attr("Type")
+        .attr(MLIR_PYTHON_CAPI_FACTORY_ATTR)(capsule)
+        .release();
+  });
+
+  m.def("unwrap_c_attribute",
+        [](MlirAttribute attribute) { return unwrap(attribute); });
+
+  m.def("wrap_attribute", [](mlir::Attribute attribute) {
+    nanobind::object capsule = nanobind::steal<nanobind::object>(
+        mlirPythonAttributeToCapsule(wrap(attribute)));
+    return nanobind::module_::import_(MAKE_MLIR_PYTHON_QUALNAME("ir"))
+        .attr("Attribute")
+        .attr(MLIR_PYTHON_CAPI_FACTORY_ATTR)(capsule)
+        .release();
+  });
+}
+
 NB_MODULE(_triton, m) {
   nb::set_leak_warnings(false);
   populateTritonExtension(m);
+
+  auto mlir = m.def_submodule("mlir");
+  populateMLIRModule(mlir);
+
+  auto ttDialect = m.def_submodule("tt");
+  populateTTDialect(ttDialect);
+
+  auto ttgDialect = m.def_submodule("ttg");
+  populateTTGialect(ttgDialect);
 }
 
 NB_MODULE(_site_initialize_0, m) {

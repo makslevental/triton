@@ -1,4 +1,5 @@
-add_compile_definitions("MLIR_PYTHON_PACKAGE_PREFIX=triton_mlir.")
+set(MLIR_PYTHON_PACKAGE_PREFIX "triton_mlir")
+add_compile_definitions("MLIR_PYTHON_PACKAGE_PREFIX=${MLIR_PYTHON_PACKAGE_PREFIX}.")
 
 include(AddMLIRPython)
 
@@ -201,31 +202,40 @@ foreach(s ${mlir_python_sources})
   endif()
 endforeach()
 
-set(_uninstalled
-  NVGPUIR
-  NVGPUToLLVM
-  ProtonIR
-  TritonAMDGPUDialectToLLVM
-  TritonAMDGPUIR
-  TritonAMDGPUToLLVM
-  TritonAMDGPUTransforms
-  TritonAMDUtils
-  TritonAnalysis
-  TritonGPUIR
-  TritonGPUToLLVM
-  TritonGPUTransforms
-  TritonIR
-  TritonLLVMIR
-  TritonNVIDIAGPUToLLVM
-  TritonNvidiaGPUIR
-  TritonNvidiaGPUTransforms
-  TritonProtonToLLVM
-  TritonToTritonGPU
-  TritonTools
-  TritonTransforms
-  f2reduce
+find_package(eudsl_nbgen CONFIG)
+if(NOT eudsl_nbgen_FOUND)
+  execute_process(
+    COMMAND "${Python_EXECUTABLE}" -m eudsl_nbgen --cmake_dir
+    OUTPUT_STRIP_TRAILING_WHITESPACE OUTPUT_VARIABLE eudsl_nbgen_DIR)
+endif()
+find_package(eudsl_nbgen REQUIRED CONFIG)
+
+maybe_add_eudsl_nbgen_to_path()
+
+set(tblgen_deps
+  TritonTableGen
+  TritonTransformsIncGen
+  TritonCombineIncGen
+  TritonGPUTableGen
+  TritonGPUAttrDefsIncGen
+  TritonGPUTypeInterfacesIncGen
+  TritonGPUTransformsIncGen
+  TritonAMDGPUTransformsIncGen
+  TritonNvidiaGPUTableGen
+  TritonNvidiaGPUAttrDefsIncGen
+  TritonNvidiaGPUTransformsIncGen
+  TritonNvidiaGPUOpInterfacesIncGen
 )
-install(TARGETS ${_uninstalled} EXPORT MLIRTargets)
+
+eudsl_nbgen(EUDSLGen_ttg
+  ${TRITON_INCLUDE_DIR}/triton/Dialect/TritonGPU/IR/Attributes.h
+  NAMESPACES mlir::triton::gpu mlir::triton::gpu::detail
+  EXTRA_INCLUDES
+    mlir/IR/BuiltinTypes.h
+    mlir/IR/OpImplementation.h
+  DEPENDS
+    ${tblgen_deps}
+)
 
 declare_mlir_python_extension(TritonPythonSources.Extension
   PYTHON_BINDINGS_LIBRARY nanobind
@@ -235,9 +245,11 @@ declare_mlir_python_extension(TritonPythonSources.Extension
   OUTPUT_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/triton_mlir/_mlir_libs"
   SOURCES
     ${CMAKE_CURRENT_LIST_DIR}/triton_mlir/TritonExtension.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/triton_mlir/mlir.cpp
     "${_mlir_python_cpp_sources}"
   PRIVATE_LINK_LIBS
     ${_libs}
+    EUDSLGen_ttg
 )
 
 set(LLD_INCLUDE_DIR "${LLVM_EXTERNAL_LLD_SOURCE_DIR}/include")
@@ -271,19 +283,50 @@ add_mlir_python_modules(TritonPythonModules
     MLIRPythonSources.Core.Python
     TritonPythonSources
 )
+target_include_directories(TritonPythonModules.extension._triton.dso PUBLIC ${EUDSL_NBGEN_INCLUDE_DIR})
 
-add_dependencies(TritonPythonModules.extension._triton.dso
-  TritonTableGen
-  TritonTransformsIncGen
-  TritonCombineIncGen
-  TritonGPUTableGen
-  TritonGPUAttrDefsIncGen
-  TritonGPUTypeInterfacesIncGen
-  TritonGPUTransformsIncGen
-  TritonAMDGPUTransformsIncGen
-  TritonNvidiaGPUTableGen
-  TritonNvidiaGPUAttrDefsIncGen
-  TritonNvidiaGPUTransformsIncGen
-  TritonNvidiaGPUOpInterfacesIncGen
-  __init__py
+set(NB_STUBGEN_CMD "${Python_EXECUTABLE}" "-m" "nanobind.stubgen"
+        --module "${MLIR_PYTHON_PACKAGE_PREFIX}._mlir_libs._triton"
+        --recursive --include-private --output-dir triton_mlir/_mlir_libs/_triton)
+set(NB_STUBGEN_OUTPUTS "_triton.pyi")
+# note WORKING_DIRECTORY
+add_custom_command(
+        OUTPUT ${NB_STUBGEN_OUTPUTS}
+        COMMAND ${NB_STUBGEN_CMD}
+        WORKING_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}"
+        DEPENDS TritonPythonModules.extension._triton.dso
 )
+add_custom_target(triton_ext_stub DEPENDS ${NB_STUBGEN_OUTPUTS})
+
+add_dependencies(TritonPythonModules
+  ${tblgen_deps}
+  __init__py
+  triton_ext_stub
+)
+
+set(_uninstalled
+  NVGPUIR
+  NVGPUToLLVM
+  ProtonIR
+  TritonAMDGPUDialectToLLVM
+  TritonAMDGPUIR
+  TritonAMDGPUToLLVM
+  TritonAMDGPUTransforms
+  TritonAMDUtils
+  TritonAnalysis
+  TritonGPUIR
+  TritonGPUToLLVM
+  TritonGPUTransforms
+  TritonIR
+  TritonLLVMIR
+  TritonNVIDIAGPUToLLVM
+  TritonNvidiaGPUIR
+  TritonNvidiaGPUTransforms
+  TritonProtonToLLVM
+  TritonToTritonGPU
+  TritonTools
+  TritonTransforms
+  f2reduce
+  EUDSLGen_ttg
+)
+install(TARGETS ${_uninstalled} EXPORT MLIRTargets)
