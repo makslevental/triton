@@ -207,7 +207,7 @@ jobs:
           artifactErrorsFailBuild: true
 
       - name: "Save cache"
-        uses: actions/cache/save@v3
+        uses: actions/cache/save@v4.2.0
         if: ${{ !cancelled() }}
         with:
           path: ${{ steps.setup_base.outputs.cache-dir }}
