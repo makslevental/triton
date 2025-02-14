@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Tuple
 
-from .dialects.tt import llvm, amd
+from ._mlir_libs._triton import llvm, amd
 from .ir import Module
 from .passes import TritonPipeline
 from .passmanager import PassManager
