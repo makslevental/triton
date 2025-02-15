@@ -111,4 +111,7 @@ setup(
     install_requires=[
         "triton-mlir-python-extras @ git+https://github.com/makslevental/mlir-python-extras@makslevental/triton_mlir"
     ],
+    extras_require={
+        "hip": ["hip-python"],
+    },
 )
