@@ -160,14 +160,13 @@ jobs:
       - name: "Test"
         run: |
           
-          $python3_command -m pip install pytest mlir-native-tools triton-mlir -f $PWD/wheelhouse
+          $python3_command -m pip install pytest mlir-native-tools
+          if [[ "${{ matrix.os }}" == "ubuntu" ]] || [[ "${{ matrix.os }}" == "almalinux" ]]; then
+            $python3_command -m pip install "triton-mlir[hip]" -f $PWD/wheelhouse --extra-index-url https://test.pypi.org/simple
+          else
+            $python3_command -m pip install triton-mlir -f $PWD/wheelhouse
+          fi
           $python3_command -m pytest -s python/triton_mlir/test
-
-      - name: "Test HIP"
-        if: ${{ matrix.os != 'macos' }}
-        run: |
-          
-          $python3_command -m pip install hip-python -i https://test.pypi.org/simple
 
       - name: Upload artifacts
         if: ${{ !cancelled() }}

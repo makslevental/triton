@@ -1,4 +1,4 @@
-from triton_mlir._mlir_libs._triton.mlir import (
+from triton_mlir._mlir_libs._triton._eudsl.mlir import (
     unwrap_c_context,
     wrap_context,
     unwrap_c_type,
@@ -38,14 +38,11 @@ def test_wrap_unrap_mlir_c(ctx):
     wrapped_ctx = wrap_context(unwrapped_ctx)
     assert isinstance(wrapped_ctx, c_Context)
 
-    order = SmallVector["uint32"]([0, 1])
-
     swizzled = SwizzledSharedEncodingAttr.get(
-        unwrapped_ctx,
         vec=8,
         per_phase=1,
         max_phase=8,
-        order=order,
+        order=[0, 1],
         cta_layout=CTALayoutAttr.get_default(unwrapped_ctx, rank=2),
     )
     assert (
