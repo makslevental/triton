@@ -956,13 +956,14 @@ NB_MODULE(_triton, m) {
   nb::set_leak_warnings(false);
   populateTritonExtension(m);
 
-  auto mlir = m.def_submodule("mlir");
+  auto eudsl = m.def_submodule("_eudsl");
+  auto mlir = eudsl.def_submodule("mlir");
   populateMLIRModule(mlir);
 
   auto ttDialect = m.def_submodule("tt");
   populateTTDialect(ttDialect);
 
-  auto ttgDialect = m.def_submodule("ttg");
+  auto ttgDialect = eudsl.def_submodule("ttg");
   populateTTGialect(ttgDialect);
 }
 
