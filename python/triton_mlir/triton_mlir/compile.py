@@ -138,10 +138,13 @@ def make_ttgir(mod: Module, options: HIPOptions):
         .tritongpu_optimize_dot_operands(hoist_layout_conversion=True)
     )
 
-    stream_prefetch = strtobool(os.getenv("TRITON_HIP_STREAM_PREFETCH", "False"))
+    # The `local-prefetch` scheduling variant requires turning on buffer ops.
+    global_prefetch = int(os.getenv("TRITON_HIP_GLOBAL_PREFETCH", "0"))
+    local_prefetch = int(os.getenv("TRITON_HIP_LOCAL_PREFETCH", "0"))
+
     # The `local-prefetch` scheduling variant requires turning on buffer ops.
     if options.instruction_sched_variant == "local-prefetch":
-        stream_prefetch = True
+        global_prefetch = local_prefetch = 1
 
     if llvm.has_matrix_core_feature(options.arch):
         assert options.num_stages != 0, (
@@ -152,7 +155,9 @@ def make_ttgir(mod: Module, options: HIPOptions):
             "equivalent behavior in the past."
         )
         p = p.tritonamdgpu_stream_pipeline(
-            num_stages=options.num_stages, prefetch=stream_prefetch
+            num_stages=options.num_stages,
+            global_prefetch=global_prefetch,
+            local_prefetch=local_prefetch,
         ).canonicalize()
     if options.instruction_sched_variant.lower() != "none":
         p = p.triton_amdgpu_insert_instruction_sched_hints(
