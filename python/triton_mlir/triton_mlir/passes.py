@@ -549,7 +549,10 @@ class TritonPipeline(Pipeline):
         return self
 
     def tritonamdgpu_stream_pipeline(
-        self, num_stages: int = None, prefetch: int = None
+        self,
+        num_stages: int = None,
+        global_prefetch: int = None,
+        local_prefetch: int = None,
     ):
         """pipeline
 
@@ -558,9 +561,10 @@ class TritonPipeline(Pipeline):
 
         Args:
             num_stages: Number of Pipeline stages
-            prefetch: Enable prefetch from shared memory
+            global_prefetch: Set global prefetch stage count
+            local_prefetch: Set local prefetch stage count
         """
         self._pipeline.append(
-            f"tritonamdgpu-stream-pipeline{{ {num_stages=} prefetch={int(prefetch)} }}"
+            f"tritonamdgpu-stream-pipeline{{ {num_stages=} global_prefetch={int(global_prefetch)} local_prefetch={int(local_prefetch) }}}"
         )
         return self
