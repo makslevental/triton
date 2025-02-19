@@ -28,7 +28,7 @@ class MyMetaFinder(MetaPathFinder):
                 importlib.util.module_from_spec(spec)
                 return spec
             except ImportError as e:
-                assert e.msg.startswith(f"dynamic module does not define module export function (PyInit_")
+                assert e.msg.startswith(f"dynamic module does not define module export function (PyInit_"), e.msg
 
 
         return None
