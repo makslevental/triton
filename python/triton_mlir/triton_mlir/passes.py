@@ -568,3 +568,8 @@ class TritonPipeline(Pipeline):
             f"tritonamdgpu-stream-pipeline{{ {num_stages=} global_prefetch={int(global_prefetch)} local_prefetch={int(local_prefetch) }}}"
         )
         return self
+
+    def convert_arith_to_smt(self):
+        """Convert arith ops and constants to SMT ops"""
+        self._pipeline.append(f"convert-arith-to-smt")
+        return self
