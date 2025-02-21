@@ -3,12 +3,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Copyright (c) 2024.
 
-#include <nanobind/nanobind.h>
-#include <nanobind/stl/optional.h>
-#include <nanobind/stl/pair.h>
-#include <nanobind/stl/string.h>
-#include <nanobind/typing.h>
-
 #include "mlir/Bytecode/BytecodeImplementation.h"
 #include "mlir/Dialect/Affine/IR/AffineValueMap.h"
 #include "mlir/Dialect/Bufferization/Transforms/Bufferize.h"
@@ -57,6 +51,11 @@
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/ThreadPool.h"
 
+#include <nanobind/nanobind.h>
+#include <nanobind/stl/optional.h>
+#include <nanobind/stl/pair.h>
+#include <nanobind/stl/string.h>
+
 #include "eudsl/bind_vec_like.h"
 #include "eudsl/helpers.h"
 #include "eudsl/type_casters.h"
@@ -70,20 +69,11 @@ public:
       : Dialect(name, context, id) {}
 };
 
+namespace eudsl {
 nb::class_<_SmallVector> smallVector;
 nb::class_<_ArrayRef> arrayRef;
 nb::class_<_MutableArrayRef> mutableArrayRef;
-
-void bind_array_ref_smallvector(nb::handle scope) {
-  scope.attr("T") = nb::type_var("T");
-  arrayRef = nb::class_<_ArrayRef>(scope, "ArrayRef", nb::is_generic(),
-                                   nb::sig("class ArrayRef[T]"));
-  mutableArrayRef =
-      nb::class_<_MutableArrayRef>(scope, "MutableArrayRef", nb::is_generic(),
-                                   nb::sig("class MutableArrayRef[T]"));
-  smallVector = nb::class_<_SmallVector>(scope, "SmallVector", nb::is_generic(),
-                                         nb::sig("class SmallVector[T]"));
-}
+} // namespace eudsl
 
 void populateEUDSL_MLIRModule(nb::module_ &m) {
   using namespace mlir;
@@ -206,7 +196,7 @@ void populateEUDSL_MLIRModule(nb::module_ &m) {
 
 #include "mlir.cpp.inc"
 
-  bind_array_ref_smallvector(m);
+  eudsl::bind_array_ref_smallvector(m);
 
   nb::class_<llvm::APFloat>(m, "APFloat");
   nb::class_<llvm::APInt>(m, "APInt");
@@ -273,151 +263,151 @@ void populateEUDSL_MLIRModule(nb::module_ &m) {
   nb::class_<llvm::BitVector>(m, "BitVector");
 
   auto [smallVectorOfBool, arrayRefOfBool, mutableArrayRefOfBool] =
-      bind_array_ref<bool>(m);
+      eudsl::bind_array_ref<bool>(m);
   auto [smallVectorOfFloat, arrayRefOfFloat, mutableArrayRefOfFloat] =
-      bind_array_ref<float>(m);
+      eudsl::bind_array_ref<float>(m);
   auto [smallVectorOfInt, arrayRefOfInt, mutableArrayRefOfInt] =
-      bind_array_ref<int>(m);
+      eudsl::bind_array_ref<int>(m);
 
   auto [smallVectorOfChar, arrayRefOfChar, mutableArrayRefOfChar] =
-      bind_array_ref<char>(m);
+      eudsl::bind_array_ref<char>(m);
   auto [smallVectorOfDouble, arrayRefOfDouble, mutableArrayRefOfDouble] =
-      bind_array_ref<double>(m);
+      eudsl::bind_array_ref<double>(m);
 
   auto [smallVectorOfInt16, arrayRefOfInt16, mutableArrayRefOfInt16] =
-      bind_array_ref<int16_t>(m);
+      eudsl::bind_array_ref<int16_t>(m);
   auto [smallVectorOfInt32, arrayRefOfInt32, mutableArrayRefOfInt32] =
-      bind_array_ref<int32_t>(m);
+      eudsl::bind_array_ref<int32_t>(m);
   auto [smallVectorOfInt64, arrayRefOfInt64, mutableArrayRefOfInt64] =
-      bind_array_ref<int64_t>(m);
+      eudsl::bind_array_ref<int64_t>(m);
 
   auto [smallVectorOfUInt16, arrayRefOfUInt16, mutableArrayRefOfUInt16] =
-      bind_array_ref<uint16_t>(m);
+      eudsl::bind_array_ref<uint16_t>(m);
   auto [smallVectorOfUInt32, arrayRefOfUInt32, mutableArrayRefOfUInt32] =
-      bind_array_ref<uint32_t>(m);
+      eudsl::bind_array_ref<uint32_t>(m);
   auto [smallVectorOfUInt64, arrayRefOfUInt64, mutableArrayRefOfUInt64] =
-      bind_array_ref<uint64_t>(m);
+      eudsl::bind_array_ref<uint64_t>(m);
 
   // these have to precede...
-  bind_array_ref<mlir::Type>(m);
-  bind_array_ref<mlir::Location>(m);
-  bind_array_ref<mlir::Attribute>(m);
-  bind_array_ref<mlir::AffineExpr>(m);
-  bind_array_ref<mlir::AffineMap>(m);
-  bind_array_ref<mlir::IRUnit>(m);
-  bind_array_ref<mlir::Dialect *>(m);
+  eudsl::bind_array_ref<mlir::Type>(m);
+  eudsl::bind_array_ref<mlir::Location>(m);
+  eudsl::bind_array_ref<mlir::Attribute>(m);
+  eudsl::bind_array_ref<mlir::AffineExpr>(m);
+  eudsl::bind_array_ref<mlir::AffineMap>(m);
+  eudsl::bind_array_ref<mlir::IRUnit>(m);
+  eudsl::bind_array_ref<mlir::Dialect *>(m);
 
-  bind_array_ref<mlir::RegisteredOperationName>(m);
+  eudsl::bind_array_ref<mlir::RegisteredOperationName>(m);
 
-  bind_array_ref<llvm::APInt>(m);
-  bind_array_ref<llvm::APFloat>(m);
-  bind_array_ref<mlir::Value>(m);
-  bind_array_ref<mlir::StringAttr>(m);
-  bind_array_ref<mlir::OperationName>(m);
-  bind_array_ref<mlir::Region *>(m);
-  bind_array_ref<mlir::SymbolTable *>(m);
-  bind_array_ref<mlir::Operation *>(m);
-  bind_array_ref<mlir::OpFoldResult>(m);
-  bind_array_ref<mlir::NamedAttribute>(m);
+  eudsl::bind_array_ref<llvm::APInt>(m);
+  eudsl::bind_array_ref<llvm::APFloat>(m);
+  eudsl::bind_array_ref<mlir::Value>(m);
+  eudsl::bind_array_ref<mlir::StringAttr>(m);
+  eudsl::bind_array_ref<mlir::OperationName>(m);
+  eudsl::bind_array_ref<mlir::Region *>(m);
+  eudsl::bind_array_ref<mlir::SymbolTable *>(m);
+  eudsl::bind_array_ref<mlir::Operation *>(m);
+  eudsl::bind_array_ref<mlir::OpFoldResult>(m);
+  eudsl::bind_array_ref<mlir::NamedAttribute>(m);
 
-  bind_array_ref<mlir::FlatSymbolRefAttr>(m);
-  bind_array_ref<mlir::BlockArgument>(m);
-  bind_array_ref<mlir::Block *>(m);
+  eudsl::bind_array_ref<mlir::FlatSymbolRefAttr>(m);
+  eudsl::bind_array_ref<mlir::BlockArgument>(m);
+  eudsl::bind_array_ref<mlir::Block *>(m);
 
-  bind_array_ref<llvm::StringRef>(m);
-  bind_array_ref<mlir::DiagnosticArgument>(m);
-  // bind_array_ref<mlir::PDLValue>(m);
-  bind_array_ref<mlir::OpAsmParser::Argument>(m);
-  bind_array_ref<mlir::OpAsmParser::UnresolvedOperand>(m);
+  eudsl::bind_array_ref<llvm::StringRef>(m);
+  eudsl::bind_array_ref<mlir::DiagnosticArgument>(m);
+  // eudsl::bind_array_ref<mlir::PDLValue>(m);
+  eudsl::bind_array_ref<mlir::OpAsmParser::Argument>(m);
+  eudsl::bind_array_ref<mlir::OpAsmParser::UnresolvedOperand>(m);
 
-  smallVector.def_static("__class_getitem__",
-                         // https://stackoverflow.com/a/48103632
-                         [smallVectorOfBool = smallVectorOfBool,
-                          smallVectorOfInt16 = smallVectorOfInt16,
-                          smallVectorOfInt32 = smallVectorOfInt32,
-                          smallVectorOfInt64 = smallVectorOfInt64,
-                          smallVectorOfUInt16 = smallVectorOfUInt16,
-                          smallVectorOfUInt32 = smallVectorOfUInt32,
-                          smallVectorOfUInt64 = smallVectorOfUInt64,
-                          smallVectorOfChar = smallVectorOfChar,
-                          smallVectorOfDouble = smallVectorOfDouble](
-                             nb::type_object type) -> nb::object {
-                           PyTypeObject *typeObj = (PyTypeObject *)type.ptr();
-                           if (typeObj == &PyBool_Type)
-                             return smallVectorOfBool;
-                           if (typeObj == &PyLong_Type)
-                             return smallVectorOfInt64;
-                           if (typeObj == &PyFloat_Type)
-                             return smallVectorOfDouble;
+  eudsl::smallVector.def_static(
+      "__class_getitem__",
+      // https://stackoverflow.com/a/48103632
+      [smallVectorOfBool = smallVectorOfBool,
+       smallVectorOfInt16 = smallVectorOfInt16,
+       smallVectorOfInt32 = smallVectorOfInt32,
+       smallVectorOfInt64 = smallVectorOfInt64,
+       smallVectorOfUInt16 = smallVectorOfUInt16,
+       smallVectorOfUInt32 = smallVectorOfUInt32,
+       smallVectorOfUInt64 = smallVectorOfUInt64,
+       smallVectorOfChar = smallVectorOfChar,
+       smallVectorOfDouble =
+           smallVectorOfDouble](nb::type_object type) -> nb::object {
+        PyTypeObject *typeObj = (PyTypeObject *)type.ptr();
+        if (typeObj == &PyBool_Type)
+          return smallVectorOfBool;
+        if (typeObj == &PyLong_Type)
+          return smallVectorOfInt64;
+        if (typeObj == &PyFloat_Type)
+          return smallVectorOfDouble;
 
-                           auto np = nb::module_::import_("numpy");
-                           auto npCharDType = np.attr("char");
-                           auto npDoubleDType = np.attr("double");
-                           auto npInt16DType = np.attr("int16");
-                           auto npInt32DType = np.attr("int32");
-                           auto npInt64DType = np.attr("int64");
-                           auto npUInt16DType = np.attr("uint16");
-                           auto npUInt32DType = np.attr("uint32");
-                           auto npUInt64DType = np.attr("uint64");
+        auto np = nb::module_::import_("numpy");
+        auto npCharDType = np.attr("char");
+        auto npDoubleDType = np.attr("double");
+        auto npInt16DType = np.attr("int16");
+        auto npInt32DType = np.attr("int32");
+        auto npInt64DType = np.attr("int64");
+        auto npUInt16DType = np.attr("uint16");
+        auto npUInt32DType = np.attr("uint32");
+        auto npUInt64DType = np.attr("uint64");
 
-                           if (type.is(npCharDType))
-                             return smallVectorOfChar;
-                           if (type.is(npDoubleDType))
-                             return smallVectorOfDouble;
-                           if (type.is(npInt16DType))
-                             return smallVectorOfInt16;
-                           if (type.is(npInt32DType))
-                             return smallVectorOfInt32;
-                           if (type.is(npInt64DType))
-                             return smallVectorOfInt64;
-                           if (type.is(npUInt16DType))
-                             return smallVectorOfUInt16;
-                           if (type.is(npUInt32DType))
-                             return smallVectorOfUInt32;
-                           if (type.is(npUInt64DType))
-                             return smallVectorOfUInt64;
+        if (type.is(npCharDType))
+          return smallVectorOfChar;
+        if (type.is(npDoubleDType))
+          return smallVectorOfDouble;
+        if (type.is(npInt16DType))
+          return smallVectorOfInt16;
+        if (type.is(npInt32DType))
+          return smallVectorOfInt32;
+        if (type.is(npInt64DType))
+          return smallVectorOfInt64;
+        if (type.is(npUInt16DType))
+          return smallVectorOfUInt16;
+        if (type.is(npUInt32DType))
+          return smallVectorOfUInt32;
+        if (type.is(npUInt64DType))
+          return smallVectorOfUInt64;
 
-                           std::string errMsg =
-                               "unsupported type for SmallVector";
-                           errMsg += nb::repr(type).c_str();
-                           throw std::runtime_error(errMsg);
-                         });
+        std::string errMsg = "unsupported type for SmallVector";
+        errMsg += nb::repr(type).c_str();
+        throw std::runtime_error(errMsg);
+      });
 
-  smallVector.def_static("__class_getitem__",
-                         [smallVectorOfFloat = smallVectorOfFloat,
-                          smallVectorOfInt16 = smallVectorOfInt16,
-                          smallVectorOfInt32 = smallVectorOfInt32,
-                          smallVectorOfInt64 = smallVectorOfInt64,
-                          smallVectorOfUInt16 = smallVectorOfUInt16,
-                          smallVectorOfUInt32 = smallVectorOfUInt32,
-                          smallVectorOfUInt64 = smallVectorOfUInt64,
-                          smallVectorOfChar = smallVectorOfChar,
-                          smallVectorOfDouble = smallVectorOfDouble](
-                             std::string type) -> nb::object {
-                           if (type == "char")
-                             return smallVectorOfChar;
-                           if (type == "float")
-                             return smallVectorOfFloat;
-                           if (type == "double")
-                             return smallVectorOfDouble;
-                           if (type == "int16")
-                             return smallVectorOfInt16;
-                           if (type == "int32")
-                             return smallVectorOfInt32;
-                           if (type == "int64")
-                             return smallVectorOfInt64;
-                           if (type == "uint16")
-                             return smallVectorOfUInt16;
-                           if (type == "uint32")
-                             return smallVectorOfUInt32;
-                           if (type == "uint64")
-                             return smallVectorOfUInt64;
+  eudsl::smallVector.def_static("__class_getitem__",
+                                [smallVectorOfFloat = smallVectorOfFloat,
+                                 smallVectorOfInt16 = smallVectorOfInt16,
+                                 smallVectorOfInt32 = smallVectorOfInt32,
+                                 smallVectorOfInt64 = smallVectorOfInt64,
+                                 smallVectorOfUInt16 = smallVectorOfUInt16,
+                                 smallVectorOfUInt32 = smallVectorOfUInt32,
+                                 smallVectorOfUInt64 = smallVectorOfUInt64,
+                                 smallVectorOfChar = smallVectorOfChar,
+                                 smallVectorOfDouble = smallVectorOfDouble](
+                                    std::string type) -> nb::object {
+                                  if (type == "char")
+                                    return smallVectorOfChar;
+                                  if (type == "float")
+                                    return smallVectorOfFloat;
+                                  if (type == "double")
+                                    return smallVectorOfDouble;
+                                  if (type == "int16")
+                                    return smallVectorOfInt16;
+                                  if (type == "int32")
+                                    return smallVectorOfInt32;
+                                  if (type == "int64")
+                                    return smallVectorOfInt64;
+                                  if (type == "uint16")
+                                    return smallVectorOfUInt16;
+                                  if (type == "uint32")
+                                    return smallVectorOfUInt32;
+                                  if (type == "uint64")
+                                    return smallVectorOfUInt64;
 
-                           std::string errMsg =
-                               "unsupported type for SmallVector: ";
-                           errMsg += type;
-                           throw std::runtime_error(errMsg);
-                         });
+                                  std::string errMsg =
+                                      "unsupported type for SmallVector: ";
+                                  errMsg += type;
+                                  throw std::runtime_error(errMsg);
+                                });
 
   nb::class_<llvm::iterator_range<mlir::BlockArgument *>>(
       m, "iterator_range[BlockArgument]");
@@ -430,15 +420,16 @@ void populateEUDSL_MLIRModule(nb::module_ &m) {
   nb::class_<llvm::iterator_range<mlir::ResultRange::UseIterator>>(
       m, "iterator_range[ResultRange.UseIterator]");
 
-  bind_iter_range<mlir::ValueTypeRange<mlir::ValueRange>, mlir::Type>(
+  eudsl::bind_iter_range<mlir::ValueTypeRange<mlir::ValueRange>, mlir::Type>(
       m, "ValueTypeRange[ValueRange]");
-  bind_iter_range<mlir::ValueTypeRange<mlir::OperandRange>, mlir::Type>(
+  eudsl::bind_iter_range<mlir::ValueTypeRange<mlir::OperandRange>, mlir::Type>(
       m, "ValueTypeRange[OperandRange]");
-  bind_iter_range<mlir::ValueTypeRange<mlir::ResultRange>, mlir::Type>(
+  eudsl::bind_iter_range<mlir::ValueTypeRange<mlir::ResultRange>, mlir::Type>(
       m, "ValueTypeRange[ResultRange]");
 
-  bind_iter_like<llvm::iplist<mlir::Block>, nb::rv_policy::reference_internal>(
-      m, "iplist[Block]");
-  bind_iter_like<llvm::iplist<mlir::Operation>,
-                 nb::rv_policy::reference_internal>(m, "iplist[Operation]");
+  eudsl::bind_iter_like<llvm::iplist<mlir::Block>,
+                        nb::rv_policy::reference_internal>(m, "iplist[Block]");
+  eudsl::bind_iter_like<llvm::iplist<mlir::Operation>,
+                        nb::rv_policy::reference_internal>(m,
+                                                           "iplist[Operation]");
 }
