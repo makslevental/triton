@@ -895,8 +895,12 @@ void populateTTDialect(nanobind::module_ &m) {
       });
 }
 
+namespace eudsl {
 extern void populateEUDSLGen_ttgModule(nb::module_ &m);
-void populateTTGialect(nanobind::module_ &m) { populateEUDSLGen_ttgModule(m); }
+}
+void populateTTGialect(nanobind::module_ &m) {
+  eudsl::populateEUDSLGen_ttgModule(m);
+}
 
 const char *HERE = "HERE";
 
