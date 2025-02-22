@@ -15,7 +15,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  PIP_FIND_LINKS: "https://github.com/llvm/eudsl/releases/expanded_assets/latest https://github.com/makslevental/mlir-wheels/releases/expanded_assets/latest"
+  PIP_FIND_LINKS: "https://github.com/llvm/eudsl/releases/expanded_assets/dev https://github.com/makslevental/mlir-wheels/releases/expanded_assets/latest"
 
 jobs:
   build:
@@ -98,6 +98,10 @@ jobs:
           export TRITON_SRC_DIR="$PWD"
           export TRITON_BUILD_DIR="$PWD/triton-build"
           export TRITON_INSTALL_DIR="$PWD/triton-install/triton-install"
+          
+          pushd $TRITON_SRC_DIR/python/triton_mlir
+          $python3_command demoemitcapis.py --triton-src-root $TRITON_SRC_DIR --mlir-include-path $LLVM_INSTALL_DIR/include
+          popd
           
           ccache -z
           
