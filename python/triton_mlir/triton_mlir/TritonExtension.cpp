@@ -896,10 +896,19 @@ void populateTTDialect(nanobind::module_ &m) {
 }
 
 namespace eudsl {
-extern void populateEUDSLGen_ttgModule(nb::module_ &m);
-}
+using namespace mlir;
+using namespace triton::gpu;
+#include "attr_decls.h.inc"
+#include "attr_defns.cpp.inc"
+#include "type_decls.h.inc"
+#include "type_defns.cpp.inc"
+} // namespace eudsl
+
 void populateTTGialect(nanobind::module_ &m) {
-  eudsl::populateEUDSLGen_ttgModule(m);
+  using namespace mlir::triton::gpu;
+  using namespace eudsl;
+#include "attr_nbclasses.cpp.inc"
+#include "type_nbclasses.cpp.inc"
 }
 
 const char *HERE = "HERE";
@@ -915,59 +924,14 @@ static std::optional<std::string> getHere() {
   return {};
 }
 
-extern void populateEUDSL_MLIRModule(nb::module_ &m);
-void populateMLIRModule(nb::module_ &m) {
-  populateEUDSL_MLIRModule(m);
-
-  m.def(
-      "unwrap_c_context", [](MlirContext context) { return unwrap(context); },
-      nb::rv_policy::reference);
-
-  m.def("wrap_context", [](mlir::MLIRContext *context) {
-    nanobind::object capsule = nanobind::steal<nanobind::object>(
-        mlirPythonContextToCapsule(wrap(context)));
-    return nanobind::module_::import_(MAKE_MLIR_PYTHON_QUALNAME("ir"))
-        .attr("Context")
-        .attr(MLIR_PYTHON_CAPI_FACTORY_ATTR)(capsule)
-        .release();
-  });
-
-  m.def("unwrap_c_type", [](MlirType type) { return unwrap(type); });
-
-  m.def("wrap_type", [](mlir::Type type) {
-    nanobind::object capsule =
-        nanobind::steal<nanobind::object>(mlirPythonTypeToCapsule(wrap(type)));
-    return nanobind::module_::import_(MAKE_MLIR_PYTHON_QUALNAME("ir"))
-        .attr("Type")
-        .attr(MLIR_PYTHON_CAPI_FACTORY_ATTR)(capsule)
-        .release();
-  });
-
-  m.def("unwrap_c_attribute",
-        [](MlirAttribute attribute) { return unwrap(attribute); });
-
-  m.def("wrap_attribute", [](mlir::Attribute attribute) {
-    nanobind::object capsule = nanobind::steal<nanobind::object>(
-        mlirPythonAttributeToCapsule(wrap(attribute)));
-    return nanobind::module_::import_(MAKE_MLIR_PYTHON_QUALNAME("ir"))
-        .attr("Attribute")
-        .attr(MLIR_PYTHON_CAPI_FACTORY_ATTR)(capsule)
-        .release();
-  });
-}
-
 NB_MODULE(_triton, m) {
   nb::set_leak_warnings(false);
   populateTritonExtension(m);
 
-  auto eudsl = m.def_submodule("_eudsl");
-  auto mlir = eudsl.def_submodule("mlir");
-  populateMLIRModule(mlir);
-
   auto ttDialect = m.def_submodule("tt");
   populateTTDialect(ttDialect);
 
-  auto ttgDialect = eudsl.def_submodule("ttg");
+  auto ttgDialect = m.def_submodule("ttg");
   populateTTGialect(ttgDialect);
 }
 
