@@ -202,16 +202,6 @@ foreach(s ${mlir_python_sources})
   endif()
 endforeach()
 
-find_package(eudsl_nbgen CONFIG)
-if(NOT eudsl_nbgen_FOUND)
-  execute_process(
-    COMMAND "${Python_EXECUTABLE}" -m eudsl_nbgen --cmake_dir
-    OUTPUT_STRIP_TRAILING_WHITESPACE OUTPUT_VARIABLE eudsl_nbgen_DIR)
-endif()
-find_package(eudsl_nbgen REQUIRED CONFIG)
-
-maybe_add_eudsl_nbgen_to_path()
-
 set(tblgen_deps
   TritonTableGen
   TritonTransformsIncGen
@@ -227,16 +217,6 @@ set(tblgen_deps
   TritonNvidiaGPUOpInterfacesIncGen
 )
 
-eudsl_nbgen(EUDSLGen_ttg
-  ${TRITON_INCLUDE_DIR}/triton/Dialect/TritonGPU/IR/Attributes.h
-  NAMESPACES mlir::triton::gpu mlir::triton::gpu::detail
-  EXTRA_INCLUDES
-    mlir/IR/BuiltinTypes.h
-    mlir/IR/OpImplementation.h
-  DEPENDS
-    ${tblgen_deps}
-)
-
 declare_mlir_python_extension(TritonPythonSources.Extension
   PYTHON_BINDINGS_LIBRARY nanobind
   ROOT_DIR "/"
@@ -245,11 +225,9 @@ declare_mlir_python_extension(TritonPythonSources.Extension
   OUTPUT_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/triton_mlir/_mlir_libs"
   SOURCES
     ${CMAKE_CURRENT_LIST_DIR}/triton_mlir/TritonExtension.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/triton_mlir/mlir.cpp
     "${_mlir_python_cpp_sources}"
   PRIVATE_LINK_LIBS
     ${_libs}
-    EUDSLGen_ttg
 )
 
 set(LLD_INCLUDE_DIR "${LLVM_EXTERNAL_LLD_SOURCE_DIR}/include")
@@ -283,7 +261,6 @@ add_mlir_python_modules(TritonPythonModules
     MLIRPythonSources.Core.Python
     TritonPythonSources
 )
-target_include_directories(TritonPythonModules.extension._triton.dso PUBLIC ${EUDSL_NBGEN_INCLUDE_DIR})
 
 set(NB_STUBGEN_CMD "${Python_EXECUTABLE}" "-m" "nanobind.stubgen"
         --module "${MLIR_PYTHON_PACKAGE_PREFIX}._mlir_libs._triton"
@@ -327,6 +304,5 @@ set(_uninstalled
   TritonTools
   TritonTransforms
   f2reduce
-  EUDSLGen_ttg
 )
 install(TARGETS ${_uninstalled} EXPORT MLIRTargets)
