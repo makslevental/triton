@@ -1,3 +1,4 @@
+import warnings
 # becomes namespace package
 from pkgutil import extend_path
 
@@ -28,7 +29,7 @@ class MyMetaFinder(MetaPathFinder):
                 importlib.util.module_from_spec(spec)
                 return spec
             except ImportError as e:
-                assert e.msg.startswith(f"dynamic module does not define module export function (PyInit_"), e.msg
+                warnings.warn(e.msg)
 
 
         return None
