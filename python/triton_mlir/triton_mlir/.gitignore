@@ -5,3 +5,4 @@ ir.py
 passmanager.py
 rewrite.py
 __init__.py
+*.inc
