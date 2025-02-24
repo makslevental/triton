@@ -81,84 +81,37 @@ jobs:
           
           set -x
           
-          pushd python/triton_mlir
-          $python3_command -m pip install setuptools wheel
-          $python3_command -m pip install -r requirements.txt
-          LLVM_URL="$($python3_command setup.py --llvm-url)" 
-          popd
+          export TRITON_SRC_DIR="$PWD"
           
-          # curl -sLO $LLVM_URL
-          # LLVM_NAME=$(basename "$LLVM_URL" ".tar.gz")
-          # tar xf $LLVM_NAME.tar.gz
-          # export LLVM_INSTALL_DIR="$PWD/$LLVM_NAME"
-
           pip -q download circt -f https://github.com/makslevental/circt/releases/expanded_assets/latest --no-deps
           unzip -q circt*whl -d circt-install
-          export LLVM_INSTALL_DIR="$PWD/circt-install"
-          export TRITON_SRC_DIR="$PWD"
-          export TRITON_BUILD_DIR="$PWD/triton-build"
-          export TRITON_INSTALL_DIR="$PWD/triton-install/triton-install"
-          
-          pushd $TRITON_SRC_DIR/python/triton_mlir
-          $python3_command demoemitcapis.py --triton-src-root $TRITON_SRC_DIR --mlir-include-path $LLVM_INSTALL_DIR/include
-          popd
+          export CMAKE_PREFIX_PATH="$PWD/circt-install"
           
           ccache -z
           
-          cmake_options=(
-            -S "$TRITON_SRC_DIR"
-            -B "$TRITON_BUILD_DIR"
-            
-            -DCMAKE_BUILD_TYPE=TritonRelBuildWithAsserts 
-            -DCMAKE_PREFIX_PATH="$LLVM_INSTALL_DIR" 
-            -DCMAKE_INSTALL_PREFIX="$TRITON_INSTALL_DIR" 
-           
-            -DCMAKE_C_VISIBILITY_PRESET=hidden 
-            -DCMAKE_CXX_VISIBILITY_PRESET=hidden 
-            -DCMAKE_VISIBILITY_INLINES_HIDDEN=ON 
-          
-            -DPython3_EXECUTABLE="$(which $python3_command)"
-          
-            # on AddLLVM.cmake has `PRE_BUILD` in it 
-            -DCMAKE_POLICY_DEFAULT_CMP0175=OLD
-        
-            -DTRITON_CODEGEN_BACKENDS="amd;nvidia" 
-            -DTRITON_BUILD_MLIR_PYTHON_MODULE=ON 
-            -DTRITON_BUILD_PROTON=OFF 
-            -DTRITON_BUILD_PYTHON_MODULE=OFF 
-            -DTRITON_BUILD_TUTORIALS=OFF 
-            -DTRITON_BUILD_UT=OFF
-          )
-          
           if [[ "${{ matrix.os }}" == "ubuntu" ]] || [[ "${{ matrix.os }}" == "almalinux" ]]; then
-              cmake_options+=(
-                -DCMAKE_EXE_LINKER_FLAGS_INIT="-fuse-ld=lld-18"
-                -DCMAKE_SHARED_LINKER_FLAGS_INIT="-fuse-ld=lld-18"
-                -DCMAKE_MODULE_LINKER_FLAGS_INIT="-fuse-ld=lld-18"
-              )
+            export CMAKE_EXE_LINKER_FLAGS_INIT="-fuse-ld=lld-18"
+            export CMAKE_SHARED_LINKER_FLAGS_INIT="-fuse-ld=lld-18"
+            export CMAKE_MODULE_LINKER_FLAGS_INIT="-fuse-ld=lld-18"
           fi
           
           # don't build a fat binary
           if [[ "${{ matrix.os }}" == "macos" ]]; then
-              cmake_options+=(
-                -DCMAKE_MODULE_LINKER_FLAGS="-Wl,-U -Wl,_PyClassMethod_New"
-                -DCMAKE_OSX_ARCHITECTURES=${{ matrix.arch }} 
-              )
-          fi
-          
-          cmake "${cmake_options[@]}"
-          cmake --build "$TRITON_BUILD_DIR" --target TritonPythonModules
-          
-          ccache -s
-          
-          # prevent universal wheels from being built for macos
-          if [[ "${{ matrix.os }}" == "macos" ]]; then
+            export CMAKE_MODULE_LINKER_FLAGS="-Wl,-U -Wl,_PyClassMethod_New"
+            export CMAKE_OSX_ARCHITECTURES="${{ matrix.arch }}"
+            # prevent universal wheels from being built for macos
             _PYTHON_HOST_PLATFORM=$($python3_command -c "import sysconfig; print(sysconfig.get_platform())")
             export _PYTHON_HOST_PLATFORM=$(echo $_PYTHON_HOST_PLATFORM | sed 's/universal2/${{ matrix.arch }}/g')
           fi
           
           pushd "$TRITON_SRC_DIR/python/triton_mlir"
-          $python3_command -m pip wheel . -w "$TRITON_SRC_DIR/wheelhouse"
+          
+          # $python3_command -m pip install pip-tools poetry
+          # $python3_command -m piptools compile --all-build-deps -o ./build-reqs.txt ./pyproject.toml
+          # $python3_command -m pip install -r ./build-reqs.txt
+          
+          ccache -s
+          $python3_command -m pip wheel . -w "$TRITON_SRC_DIR/wheelhouse" -v
           popd
 
       - name: "Test"
@@ -166,10 +119,9 @@ jobs:
           
           $python3_command -m pip install pytest mlir-native-tools
           if [[ "${{ matrix.os }}" == "ubuntu" ]] || [[ "${{ matrix.os }}" == "almalinux" ]]; then
-            $python3_command -m pip install "triton-mlir[hip]" -f $PWD/wheelhouse --extra-index-url https://test.pypi.org/simple
-          else
-            $python3_command -m pip install triton-mlir -f $PWD/wheelhouse
+            $python3_command -m pip install hip-python --extra-index-url https://test.pypi.org/simple
           fi
+          $python3_command -m pip install triton-mlir -f $PWD/wheelhouse
           $python3_command -m pytest -s python/triton_mlir/test
 
       - name: Upload artifacts
@@ -181,7 +133,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Release current commit
-        uses: ncipollo/release-action@v1.12.0
+        uses: ncipollo/release-action@v1.16.0
         with:
           artifacts: "wheelhouse/*.whl"
           token: "${{ secrets.GITHUB_TOKEN }}"
@@ -194,7 +146,7 @@ jobs:
           omitBody: true
 
       - name: Release current commit
-        uses: ncipollo/release-action@v1.12.0
+        uses: ncipollo/release-action@v1.16.0
         with:
           owner: makslevental
           repo: wheels
@@ -207,7 +159,7 @@ jobs:
           replacesArtifacts: true
           makeLatest: true
           omitBody: true
-          artifactErrorsFailBuild: true
+          artifactErrorsFailBuild: false
 
       - name: "Save cache"
         uses: actions/cache/save@v4.2.0
