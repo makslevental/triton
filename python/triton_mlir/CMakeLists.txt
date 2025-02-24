@@ -82,6 +82,18 @@ declare_mlir_dialect_python_bindings(
     "../../../third_party/amd/include/Dialect/TritonAMDGPU/IR/TritonAMDGPUAttrDefs.td"
   DIALECT_NAME proton)
 
+install(
+  FILES
+    "triton_mlir/dialects/amdgpu.py"
+    "triton_mlir/dialects/nvgpu.py"
+    "triton_mlir/dialects/proton.py"
+    "triton_mlir/dialects/tt.py"
+    "triton_mlir/dialects/ttg.py"
+    "triton_mlir/dialects/ttng.py"
+    "triton_mlir/dialects/ttpp.py"
+  DESTINATION "triton_mlir/dialects"
+)
+
 configure_file(
   "${CMAKE_CURRENT_LIST_DIR}/triton_mlir/__init__.py.in"
   "${CMAKE_CURRENT_LIST_DIR}/triton_mlir/__init__.py"
@@ -96,10 +108,13 @@ add_custom_command(OUTPUT "${CMAKE_CURRENT_LIST_DIR}/triton_mlir/__init__.py"
   COMMENT "generating ${CMAKE_CURRENT_LIST_DIR}/triton_mlir/__init__.py"
   VERBATIM
 )
-
 add_custom_target (
   __init__py DEPENDS
   "${CMAKE_CURRENT_LIST_DIR}/triton_mlir/__init__.py"
+)
+install(
+  FILES "triton_mlir/__init__.py"
+  DESTINATION "triton_mlir"
 )
 
 get_property(_all_libs GLOBAL PROPERTY MLIR_ALL_LIBS)
@@ -175,6 +190,18 @@ elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64")
     LLVMAArch64AsmParser
     LLVMAArch64Disassembler)
 endif()
+
+list(REMOVE_DUPLICATES _libs)
+list(REMOVE_ITEM _libs
+  mlir_c_runner_utils
+  mlir_runner_utils
+  MLIRSparseTensorRuntime
+  mlir_float16_utils
+  mlir_async_runtime
+  mlir_arm_sme_abi_stubs
+  mlir_arm_runner_utils
+  mlir_spirv_cpu_runtime
+)
 
 # Dig out all of the upstream cpp source files associated with the C extension modules.
 set(_python_dialect_sources
@@ -283,7 +310,7 @@ endforeach()
 
 add_mlir_python_modules(TritonPythonModules
   ROOT_PREFIX "${CMAKE_CURRENT_LIST_DIR}/triton_mlir"
-  INSTALL_PREFIX "python_packages/triton_mlir"
+  INSTALL_PREFIX "triton_mlir"
   DECLARED_SOURCES
     ${mlir_python_sources_deps}
     MLIRPythonSources.Core.Python
@@ -302,6 +329,11 @@ add_custom_command(
         DEPENDS TritonPythonModules.extension._triton.dso
 )
 add_custom_target(triton_ext_stub DEPENDS ${NB_STUBGEN_OUTPUTS})
+install(
+  DIRECTORY "triton_mlir/_mlir_libs/_triton"
+  DESTINATION "triton_mlir/_mlir_libs"
+  PATTERN "*.pyi"
+)
 
 add_dependencies(TritonPythonModules
   ${tblgen_deps}
