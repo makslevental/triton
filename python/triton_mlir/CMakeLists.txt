@@ -217,6 +217,34 @@ set(tblgen_deps
   TritonNvidiaGPUOpInterfacesIncGen
 )
 
+find_package(eudsl_tblgen CONFIG)
+if(NOT eudsl_tblgen_FOUND)
+  execute_process(
+    COMMAND "${Python_EXECUTABLE}" -m eudsl_tblgen --cmake_dir
+    OUTPUT_STRIP_TRAILING_WHITESPACE OUTPUT_VARIABLE eudsl_tblgen_DIR
+    COMMAND_ECHO STDERR
+  )
+endif()
+find_package(eudsl_tblgen CONFIG REQUIRED)
+
+eudsl_tblgen(eudsl_TritonGPUAttrDefs
+  TD_FILE
+    "../../include/triton/Dialect/TritonGPU/IR/TritonGPUAttrDefs.td"
+  OUTPUT_DIRECTORY
+    "${CMAKE_CURRENT_SOURCE_DIR}/triton_mlir"
+  KIND
+    MlirAttribute
+)
+
+eudsl_tblgen(eudsl_TritonGPUTypes
+  TD_FILE
+    "../../include/triton/Dialect/TritonGPU/IR/TritonGPUTypes.td"
+  OUTPUT_DIRECTORY
+    "${CMAKE_CURRENT_SOURCE_DIR}/triton_mlir"
+  KIND
+    MlirType
+)
+
 declare_mlir_python_extension(TritonPythonSources.Extension
   PYTHON_BINDINGS_LIBRARY nanobind
   ROOT_DIR "/"
@@ -279,6 +307,8 @@ add_dependencies(TritonPythonModules
   ${tblgen_deps}
   __init__py
   triton_ext_stub
+  eudsl_TritonGPUAttrDefs
+  eudsl_TritonGPUTypes
 )
 
 set(_uninstalled

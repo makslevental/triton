@@ -898,17 +898,17 @@ void populateTTDialect(nanobind::module_ &m) {
 namespace eudsl {
 using namespace mlir;
 using namespace triton::gpu;
-#include "attr_decls.h.inc"
-#include "attr_defns.cpp.inc"
-#include "type_decls.h.inc"
-#include "type_defns.cpp.inc"
+#include "TritonGPUAttrDefs_MlirAttribute_decls.h.inc"
+#include "TritonGPUAttrDefs_MlirAttribute_defns.cpp.inc"
+#include "TritonGPUTypes_MlirType_decls.h.inc"
+#include "TritonGPUTypes_MlirType_defns.cpp.inc"
 } // namespace eudsl
 
 void populateTTGialect(nanobind::module_ &m) {
   using namespace mlir::triton::gpu;
   using namespace eudsl;
-#include "attr_nbclasses.cpp.inc"
-#include "type_nbclasses.cpp.inc"
+#include "TritonGPUAttrDefs_MlirAttribute_nbclasses.cpp.inc"
+#include "TritonGPUTypes_MlirType_nbclasses.cpp.inc"
 }
 
 const char *HERE = "HERE";
