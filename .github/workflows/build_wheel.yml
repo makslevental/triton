@@ -132,6 +132,26 @@ jobs:
           path: wheelhouse
           if-no-files-found: warn
 
+      - name: "Save cache"
+        uses: actions/cache/save@v4.2.0
+        if: ${{ !cancelled() }}
+        with:
+          path: ${{ steps.setup_base.outputs.cache-dir }}
+          key: ${{ env.cache-key }}
+
+  release:
+
+    needs: [build]
+    runs-on: ubuntu-22.04
+    steps:
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4.1.8
+        with:
+          pattern: triton_mlir_*
+          path: wheelhouse
+          merge-multiple: true
+
       - name: Release current commit
         uses: ncipollo/release-action@v1.16.0
         with:
@@ -160,10 +180,3 @@ jobs:
           makeLatest: true
           omitBody: true
           artifactErrorsFailBuild: false
-
-      - name: "Save cache"
-        uses: actions/cache/save@v4.2.0
-        if: ${{ !cancelled() }}
-        with:
-          path: ${{ steps.setup_base.outputs.cache-dir }}
-          key: ${{ env.cache-key }}
