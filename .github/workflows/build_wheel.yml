@@ -106,12 +106,14 @@ jobs:
           
           pushd "$TRITON_SRC_DIR/python/triton_mlir"
           
-          # $python3_command -m pip install pip-tools poetry
-          # $python3_command -m piptools compile --all-build-deps -o ./build-reqs.txt ./pyproject.toml
-          # $python3_command -m pip install -r ./build-reqs.txt
+          $python3_command -m pip install pip-tools poetry
+          $python3_command -m piptools compile --all-build-deps -o ./build-reqs.txt ./pyproject.toml
+          $python3_command -m pip install -r ./build-reqs.txt
+          
+          $python3_command -m pip wheel . -w "$TRITON_SRC_DIR/wheelhouse" -v --no-build-isolation
           
           ccache -s
-          $python3_command -m pip wheel . -w "$TRITON_SRC_DIR/wheelhouse" -v
+          
           popd
 
       - name: "Test"
