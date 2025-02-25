@@ -1,0 +1,8 @@
+_mlir_libs
+dialects/*.py
+extras
+ir.py
+passmanager.py
+rewrite.py
+__init__.py
+*.inc
