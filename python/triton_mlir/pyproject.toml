@@ -31,7 +31,6 @@ build-backend = "scikit_build_core.build"
 minimum-version = "0.10"
 build-dir = "build/{wheel_tag}"
 cmake.source-dir = "../.."
-#wheel.packages = ["triton_mlir"]
 wheel.exclude = ["src/*", "lib/*", "*.cpp", "*.in", "*.gitignore", "*.td", "*.pyc"]
 wheel.py-api = "cp312"
 
