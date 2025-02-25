@@ -51,7 +51,7 @@ jobs:
 
     env:
       # either the PR number or `branch-N` where N always increments
-      cache-key: "triton_mlir_${{ matrix.name }}_${{ matrix.python-version }}_${{ format('{0}-{1}', github.ref_name, github.run_number) }}"
+      cache-key: "triton_mlir_circt_${{ matrix.name }}_${{ matrix.python-version }}_${{ format('{0}-{1}', github.ref_name, github.run_number) }}"
 
     container:
       image: ${{ matrix.container }}
