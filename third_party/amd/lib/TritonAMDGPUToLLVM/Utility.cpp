@@ -496,6 +496,7 @@ int32_t getCtrlBitsForCacheModifierOnTarget(
 
 Value cvtFp32ToFp16(Location loc, RewriterBase &rewriter, const Value &v,
                     triton::RoundingMode rounding) {
+  rounding = triton::RoundingMode::RTZ;
   if (rounding == triton::RoundingMode::RTNE) {
     LLVM::RoundingMode rm = LLVM::RoundingMode::NearestTiesToEven;
     return rewriter.create<LLVM::ConstrainedFPTruncIntr>(

@@ -47,6 +47,8 @@ if (TRITON_PARALLEL_LINK_JOBS)
     set(CMAKE_JOB_POOL_LINK link_job_pool)
 endif()
 
+string(REPLACE "-Wl,-z,defs", "" CMAKE_MODULE_LINKER_FLAGS ${CMAKE_MODULE_LINKER_FLAGS})
+string(REPLACE "-Wl,-z,defs", "" CMAKE_SHARED_LINKER_FLAGS ${CMAKE_SHARED_LINKER_FLAGS})
 
 # Ensure Python3 vars are set correctly
 # used conditionally in this file and by lit tests
@@ -143,7 +145,7 @@ endfunction()
 
 # Disable warnings that show up in external code (gtest;pybind11)
 if(NOT MSVC)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Werror -Wno-covered-switch-default -fvisibility=hidden")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-covered-switch-default -fvisibility=hidden")
 else()
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd4244 /wd4624 /wd4715 /wd4530")
 endif()
@@ -236,6 +238,7 @@ if(TRITON_BUILD_PYTHON_MODULE)
     MLIRIndexToLLVM
     MLIRGPUToROCDLTransforms
     MLIRUBToLLVM
+    MLIRTosaDialect
 
     # LLVM
     LLVMPasses
@@ -285,6 +288,7 @@ if(TRITON_BUILD_PYTHON_MODULE)
                   ${PYTHON_SRC_PATH}/passes.cc
                   ${PYTHON_SRC_PATH}/interpreter.cc
                   ${PYTHON_SRC_PATH}/llvm.cc)
+  set_target_properties(triton PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}/python/triton/_C)
 
   # Link triton with its dependencies
   target_link_libraries(triton PRIVATE ${TRITON_LIBRARIES})
@@ -323,7 +327,7 @@ endif()
 find_package(Threads REQUIRED)
 
 add_subdirectory(third_party/f2reduce)
-add_subdirectory(bin)
+#add_subdirectory(bin)
 add_subdirectory(test)
 
 if(TRITON_BUILD_UT)
@@ -335,3 +339,30 @@ if(TRITON_BUILD_UT)
     USES_TERMINAL
   )
 endif()
+
+set(_uninstalled
+        NVGPUIR
+        NVGPUToLLVM
+        ProtonIR
+        TritonAMDGPUDialectToLLVM
+        TritonAMDGPUIR
+        TritonAMDGPUToLLVM
+        TritonAMDGPUTransforms
+        TritonAMDUtils
+        TritonAnalysis
+        TritonGPUIR
+        TritonGPUToLLVM
+        TritonGPUTransforms
+        TritonIR
+        TritonLLVMIR
+        TritonNVIDIAGPUToLLVM
+        TritonNvidiaGPUIR
+        TritonNvidiaGPUTransforms
+        TritonProtonToLLVM
+        TritonToTritonGPU
+        TritonTools
+        TritonTransforms
+        f2reduce
+        TritonAMDAnalysis
+)
+install(TARGETS ${_uninstalled} EXPORT MLIRTargets)

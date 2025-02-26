@@ -364,10 +364,15 @@ class HIPBackend(BaseBackend):
         assert len(names) == 1
         metadata["name"] = names[0]
         # llvm -> hsaco
-        amdgcn = llvm.translate_to_asm(src, amd.TARGET_TRIPLE, options.arch, '', [], options.enable_fp_fusion, False)
-        if os.environ.get("AMDGCN_ENABLE_DUMP", "0") == "1":
-            print("// -----// AMDGCN Dump //----- //")
-            print(amdgcn)
+        # amdgcn = llvm.translate_to_asm(src, amd.TARGET_TRIPLE, options.arch, '', [], options.enable_fp_fusion, False)
+
+        with tempfile.NamedTemporaryFile(suffix=".ll", mode="w") as tmp_out_llir:
+            tmp_out_llir.write(src)
+            tmp_out_llir.flush()
+            subprocess.check_call(["/home/mlevental/dev_projects/llvm-project/cmake-build-debug/bin/llc", tmp_out_llir.name, '-global-isel', '-mtriple=amdgcn-amd-amdhsa', '-mcpu=gfx1100', '-O3', "-o", "/home/mlevental/dev_projects/llvm-project/cmake-build-debug/matmul.amdgcn"])
+        with open("/home/mlevental/dev_projects/llvm-project/cmake-build-debug/matmul.amdgcn") as tmp_amdgcn_out:
+            amdgcn = tmp_amdgcn_out.read()
+
         return amdgcn
 
     @staticmethod
