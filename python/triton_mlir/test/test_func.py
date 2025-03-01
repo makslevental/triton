@@ -50,6 +50,7 @@ def test_vadd(ctx):
         v14 = splat(arg2, (64,))
         v15 = addptr(v14, v4)
         store(v15, v13, v6)
+        tt.return_(srcs=[])
 
     kernel_0123.emit()
     ctx.module.operation.verify()
