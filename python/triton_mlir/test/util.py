@@ -1,5 +1,5 @@
 def hip_check(call_result):
-    import hip
+    from hip import hip
 
     err = call_result[0]
     result = call_result[1:]
@@ -12,7 +12,7 @@ def hip_check(call_result):
 
 def hip_bindings_not_installed():
     try:
-        import hip
+        from hip import hip
 
         props = hip.hipDeviceProp_t()
         hip_check(hip.hipGetDeviceProperties(props, 0))
