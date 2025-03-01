@@ -45,6 +45,7 @@
 #include "llvm/IR/PassTimingInfo.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/IRReader/IRReader.h"
+#include "llvm/Linker/Linker.h"
 #include "llvm/MC/MCAsmBackend.h"
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCCodeEmitter.h"
@@ -76,6 +77,7 @@
 #include <nanobind/nanobind.h>
 #include <nanobind/stl/unique_ptr.h>
 #include <numeric>
+#include <unordered_set>
 
 namespace mlir::triton::AMD {
 enum class ISAFamily;
@@ -295,6 +297,10 @@ MlirType tritonMlirPointerTypeOfPointeeType(MlirType type, int addressSpace) {
 MlirType tritonMlirPointerTypeGetPointeeType(MlirType type) {
   return wrap(
       llvm::cast<mlir::triton::PointerType>(unwrap(type)).getPointeeType());
+}
+
+int tritonMlirPointerTypeGetAddressSpace(MlirType type) {
+  return llvm::cast<mlir::triton::PointerType>(unwrap(type)).getAddressSpace();
 }
 
 void addControlConstant(llvm::Module *module, const char *name,
@@ -724,6 +730,45 @@ void populateTritonExtension(nanobind::module_ &m) {
       },
       nb::rv_policy::take_ownership);
 
+  llvm.def("link_extern_libs", [](llvm::Module *dstMod,
+                                  const std::vector<std::string> &paths) {
+    if (paths.empty())
+      return;
+
+    llvm::LLVMContext &ctx = dstMod->getContext();
+    llvm::Linker linker(*dstMod);
+    for (const std::string &path : paths) {
+      llvm::SMDiagnostic err;
+      std::unique_ptr<llvm::Module> libMod = llvm::parseIRFile(path, err, ctx);
+      if (!libMod) {
+        std::string message = "Failed to parse library at " + path;
+        throw std::invalid_argument(message);
+      }
+      libMod->setTargetTriple(dstMod->getTargetTriple());
+      libMod->setDataLayout(dstMod->getDataLayout());
+
+      std::unordered_set<std::string> externalFns;
+      for (llvm::Function &fn : libMod->functions()) {
+        if (!fn.isDeclaration())
+          externalFns.insert(fn.getName().str());
+      }
+
+      if (linker.linkInModule(std::move(libMod),
+                              llvm::Linker::Flags::LinkOnlyNeeded)) {
+        std::string message = "Failed to link library at " + path;
+        throw std::invalid_argument(message);
+      }
+
+      // Mark linked-in functions as internal because backends use external
+      // linkage as a signifier of kernel functions.
+      for (llvm::Function &fn : dstMod->functions()) {
+        if (externalFns.count(fn.getName().str())) {
+          fn.setLinkage(llvm::GlobalValue::InternalLinkage);
+        }
+      }
+    }
+  });
+
   auto amd = m.def_submodule("amd");
   amd.attr("TARGET_TRIPLE") = amdTargetTriple;
   amd.attr("CALLING_CONV_AMDGPU_KERNEL") =
@@ -866,6 +911,29 @@ void populateTritonExtension(nanobind::module_ &m) {
       },
       nb::rv_policy::take_ownership);
 
+  amd.def("need_extern_lib", [](llvm::Module *module, const std::string &lib) {
+    for (llvm::Function &f : module->functions()) {
+      if (f.hasExternalLinkage() && f.hasName() && !f.hasExactDefinition()) {
+        llvm::StringRef funcName = f.getName();
+        // The rule for linking the extern lib:
+        //    if the function name includes ocml or ockl, link
+        //    ocml or ockl accordingly.
+        if (funcName.contains(lib))
+          return true;
+        if (funcName.contains("__nv_")) {
+          std::stringstream message;
+          message << "Implicit conversion of CUDA " << funcName.str()
+                  << " device function has been dropped; "
+                  << "please, update your source program to use "
+                     "triton.language.extra.<op> "
+                  << "to replace triton.language.extra.cuda.<op>";
+          throw std::runtime_error(message.str());
+        }
+      }
+    }
+    return false;
+  });
+
   amd.def("link_hsaco",
           [](const std::string &inPath, const std::string &outPath) {
             if (!lldInvoke(inPath.c_str(), outPath.c_str()))
@@ -890,8 +958,12 @@ void populateTTDialect(nanobind::module_ &m) {
              return tritonMlirPointerTypeOfPointeeType(self,
                                                        /*addressSpace*/ 1);
            })
-      .def_property_readonly("pointee_type", [](MlirType self) {
-        return tritonMlirPointerTypeGetPointeeType(self);
+      .def_property_readonly("pointee_type",
+                             [](MlirType self) {
+                               return tritonMlirPointerTypeGetPointeeType(self);
+                             })
+      .def_property_readonly("address_space", [](MlirType self) {
+        return tritonMlirPointerTypeGetAddressSpace(self);
       });
 }
 

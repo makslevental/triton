@@ -59,6 +59,7 @@ def test_make_ttir(ctx):
         v14 = splat(arg2, (64,))
         v15 = addptr(v14, v4)
         store(v15, v13, v6)
+        tt.return_(srcs=[])
 
     kernel_0123.emit()
     ctx.module.operation.verify()
@@ -101,6 +102,7 @@ def test_make_ttgir(ctx):
         v14 = splat(arg2, (64,))
         v15 = addptr(v14, v4)
         store(v15, v13, v6)
+        tt.return_(srcs=[])
 
     kernel_0123.emit()
     ctx.module.operation.verify()
@@ -145,13 +147,14 @@ def test_make_llir(ctx):
         v14 = splat(arg2, (64,))
         v15 = addptr(v14, v4)
         store(v15, v13, v6)
+        tt.return_(srcs=[])
 
     kernel_0123.emit()
     ctx.module.operation.verify()
     mod = make_ttir(ctx.module)
     options = parse_options("gfx1100")
     mod = make_ttgir(mod, options)
-    llvm_mod = make_llir(mod, options)
+    llvm_mod, _ = make_llir(mod, options)
     print(llvm_mod)
 
 
@@ -190,13 +193,14 @@ def test_make_amdgcn(ctx):
         v14 = splat(arg2, (64,))
         v15 = addptr(v14, v4)
         store(v15, v13, v6)
+        tt.return_(srcs=[])
 
     kernel_0123.emit()
     ctx.module.operation.verify()
     mod = make_ttir(ctx.module)
     options = parse_options("gfx1100")
     mod = make_ttgir(mod, options)
-    llvm_mod = make_llir(mod, options)
+    llvm_mod, _ = make_llir(mod, options)
     amdgcn = make_amdgcn(llvm_mod, options)
     print(amdgcn)
 
@@ -236,13 +240,14 @@ def test_make_hsaco(ctx):
         v14 = splat(arg2, (64,))
         v15 = addptr(v14, v4)
         store(v15, v13, v6)
+        tt.return_(srcs=[])
 
     kernel_0123.emit()
     ctx.module.operation.verify()
     mod = make_ttir(ctx.module)
     options = parse_options("gfx1100")
     mod = make_ttgir(mod, options)
-    llvm_mod = make_llir(mod, options)
+    llvm_mod, _ = make_llir(mod, options)
     amdgcn = make_amdgcn(llvm_mod, options)
     hsaco = make_hsaco(amdgcn, options)
     print(hsaco)

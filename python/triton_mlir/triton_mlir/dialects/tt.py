@@ -7,6 +7,7 @@ from typing import Optional, Sequence
 # noinspection PyUnresolvedReferences
 from ._tt_enum_gen import *
 from ._tt_ops_gen import *
+
 # noinspection PyUnresolvedReferences
 from .._mlir_libs._triton.tt import *
 
@@ -16,7 +17,7 @@ from ..extras.dialects.ext.arith import Scalar, constant
 from ..extras.dialects.ext.func import FuncBase
 from ..extras.dialects.ext.tensor import Tensor
 from ..extras.util import make_maybe_no_args_decorator, get_user_code_loc
-from ..ir import Value, RankedTensorType, Type, ShapedType
+from ..ir import Value, RankedTensorType, Type, ShapedType, BoolAttr, TypeAttr
 
 
 @make_maybe_no_args_decorator
@@ -24,21 +25,33 @@ def jit(
     f,
     *,
     sym_visibility=None,
+    sym_name=None,
     arg_attrs=None,
     res_attrs=None,
+    function_type=None,
+    noinline=None,
     loc=None,
     ip=None,
 ):
     if loc is None:
         loc = get_user_code_loc()
+    func_attrs = {}
+    if noinline is not None:
+        assert isinstance(noinline, bool)
+        func_attrs["noinline"] = BoolAttr.get(noinline)
+    if function_type is not None and isinstance(function_type, TypeAttr):
+        function_type = function_type.value
     return FuncBase(
         body_builder=f,
         func_op_ctor=FuncOp,
-        return_op_ctor=ReturnOp,
+        return_op_ctor=None,
         call_op_ctor=CallOp,
         sym_visibility=sym_visibility,
+        sym_name=sym_name,
         arg_attrs=arg_attrs,
         res_attrs=res_attrs,
+        func_attrs=func_attrs,
+        function_type=function_type,
         loc=loc,
         ip=ip,
     )
@@ -271,3 +284,7 @@ def addptr(
         ), f"'addptr' op all non-scalar operands/results must have the same shape and base type: {ptr=} {offset=}"
     result_type = ptr.type
     return _addptr(result_type, ptr, offset, loc=loc, ip=ip)
+
+
+def ptr(pointee_type, address_space=1):
+    return PointerType.of_pointee_type(pointee_type, address_space)
