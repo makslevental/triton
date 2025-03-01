@@ -334,6 +334,11 @@ install(
   DESTINATION "triton_mlir/_mlir_libs"
   PATTERN "*.pyi"
 )
+install(
+  DIRECTORY "triton_mlir/lib"
+  DESTINATION "triton_mlir"
+  PATTERN "*.pyi"
+)
 
 add_dependencies(TritonPythonModules
   ${tblgen_deps}

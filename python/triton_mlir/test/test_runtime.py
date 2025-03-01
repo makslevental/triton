@@ -1,6 +1,7 @@
 import array
 import math
 import random
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -35,9 +36,6 @@ if hip_bindings_not_installed():
     pytest.skip(allow_module_level=True)
 
 from hip import hip, hiprtc
-
-
-
 
 
 def test_smoke():
@@ -128,6 +126,7 @@ def test_run_vector_add_bare(ctx):
         v14 = splat(output, (BLOCK_SIZE,))
         v15 = addptr(v14, v4)
         store(v15, v13, v6)
+        tt.return_(srcs=[])
 
     vector_add.emit()
     ctx.module.operation.verify()
@@ -139,7 +138,7 @@ def test_run_vector_add_bare(ctx):
     options = parse_options(arch)
 
     mod = make_ttgir(mod, options)
-    llvm_mod = make_llir(mod, options)
+    llvm_mod, _ = make_llir(mod, options)
     amdgcn = make_amdgcn(llvm_mod, options)
     hsaco = make_hsaco(amdgcn, options)
 
@@ -224,6 +223,7 @@ def test_run_vector_add_np(ctx):
         x: +T.float32, y: +T.float32, output: +T.float32, n_elements: T.int32
     ):
         v0 = tt.get_program_id(axis=tt.ProgramIDDim.X)
+        tt.print_(prefix=" pid: ", hex=False, args=[v0], is_signed=[1])
         c32 = arith.constant(BLOCK_SIZE, T.int32)
         v1 = v0 * c32
         v2 = arange(0, BLOCK_SIZE)
@@ -253,10 +253,13 @@ def test_run_vector_add_np(ctx):
         v14 = splat(output, (BLOCK_SIZE,))
         v15 = addptr(v14, v4)
         store(v15, v13, v6)
+        tt.return_(srcs=[])
 
     vector_add.emit()
     ctx.module.operation.verify()
     mod = make_ttir(ctx.module)
+    with open(Path(__file__).parent / "vector_add.tt.mlir", "w") as f:
+        f.write(str(mod))
 
     props = hip.hipDeviceProp_t()
     hip_check(hip.hipGetDeviceProperties(props, 0))
@@ -264,8 +267,14 @@ def test_run_vector_add_np(ctx):
     options = parse_options(arch)
 
     mod = make_ttgir(mod, options)
-    llvm_mod = make_llir(mod, options)
+    with open(Path(__file__).parent / "vector_add.ttg.mlir", "w") as f:
+        f.write(str(mod))
+    llvm_mod, _ = make_llir(mod, options)
+    with open(Path(__file__).parent / "vector_add.ll", "w") as f:
+        f.write(str(llvm_mod))
     amdgcn = make_amdgcn(llvm_mod, options)
+    with open(Path(__file__).parent / "vector_add.amdgcn", "w") as f:
+        f.write(str(amdgcn))
     hsaco = make_hsaco(amdgcn, options)
 
     props = hip.hipDeviceProp_t()
@@ -282,7 +291,7 @@ def test_run_vector_add_np(ctx):
     output_h = np.zeros((n_elements,)).astype(dtype=np.float32)
 
     # device vectors
-    num_bytes = n_elements * np.dtype(np.float32).itemsize
+    num_bytes = n_elements * x_h.itemsize
     x_d = hip_check(hip.hipMalloc(num_bytes))
     y_d = hip_check(hip.hipMalloc(num_bytes))
     output_d = hip_check(hip.hipMalloc(num_bytes))

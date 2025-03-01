@@ -54,12 +54,22 @@ class HIPOptions:
     instruction_sched_variant: str = "none"
 
     def __post_init__(self):
+        # Ignore user-defined warp size for gfx9
         warp_size = (
             32
             if "gfx10" in self.arch or "gfx11" in self.arch or "gfx12" in self.arch
             else 64
         )
         object.__setattr__(self, "warp_size", warp_size)
+        # Only kpack=1 is supported on gfx950
+        kpack = 1 if self.arch == "gfx950" else self.kpack
+        object.__setattr__(self, "kpack", kpack)
+        libs = ["ocml", "ockl"]
+        default_libdir = Path(__file__).parent / "lib"
+        extern_libs = {} if self.extern_libs is None else dict(self.extern_libs)
+        for lib in libs:
+            extern_libs[lib] = str(default_libdir / f"{lib}.bc")
+        object.__setattr__(self, "extern_libs", tuple(extern_libs.items()))
         assert (
             self.num_warps > 0 and (self.num_warps & (self.num_warps - 1)) == 0
         ), "num_warps must be a power of 2"
@@ -117,7 +127,7 @@ def make_ttir(mod: Module):
 def make_ttgir(mod: Module, options: HIPOptions):
     p = TritonPipeline().convert_triton_to_tritongpu(
         num_warps=options.num_warps,
-        threads_per_warp=options.num_warps,
+        threads_per_warp=options.warp_size,
         num_ctas=options.num_ctas,
         target=f"hip:{options.arch}",
     )
@@ -298,6 +308,7 @@ def make_llir(mod, options: HIPOptions):
     p = p.convert_builtin_func_to_llvm(__HIP_FTZ)
     pm = PassManager.parse(p.materialize())
     pm.run(mod.operation)
+    shared_memory = mod.operation.attributes["ttg.shared"]
 
     # LLVM-IR (MLIR) -> LLVM-IR (LLVM)
     llvm.init_targets()
@@ -369,8 +380,8 @@ def make_llir(mod, options: HIPOptions):
     amd.cleanup_bitcode_metadata(llvm_mod)
     # Disable inlining of print related functions,
     # because inlining of these function could slow down compilation significantly
-    amd.disable_print_inline(llvm_mod)
-    return llvm_mod
+    # amd.disable_print_inline(llvm_mod)
+    return llvm_mod, shared_memory
 
 
 def make_amdgcn(llvm_mod, options):
