@@ -1,3 +1,10 @@
+import os
+
+import pytest
+
+from triton_mlir.compiler import HIPBackend, make_backend, ENV_OR_DEFAULT_ARCH
+
+
 def hip_check(call_result):
     from hip import hip
 
@@ -23,3 +30,15 @@ def hip_bindings_not_installed():
     except:
         # skip
         return True
+
+
+@pytest.fixture
+def backend(request) -> HIPBackend:
+    arch = None
+    if hasattr(request.node, "callspec"):
+        arch = request.node.callspec.params.get("arch")
+    if arch is None:
+        arch = ENV_OR_DEFAULT_ARCH
+
+    warp_size = 32 if "gfx10" in arch or "gfx11" in arch or "gfx12" in arch else 64
+    return make_backend(arch, warp_size)
