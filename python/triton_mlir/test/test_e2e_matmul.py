@@ -1,3 +1,4 @@
+import ctypes
 import inspect
 import io
 import math
@@ -43,21 +44,21 @@ from triton_mlir.extras.testing import mlir_ctx as ctx, filecheck, MLIRContext
 
 from triton_mlir.dialects import tt, builtin
 from triton_mlir.types import T
-from triton_mlir.compile import (
-    make_ttir,
-    make_ttgir,
-    parse_options,
-    make_llir,
-    make_amdgcn,
-    make_hsaco,
+from triton_mlir.compiler import (
+    HIPBackend,
+    unwrap_c_module_op,
+    tritonir,
+    llvm,
+    GPUTarget,
 )
 
 # noinspection PyUnresolvedReferences
 from triton_mlir.dialects.tt import splat, arange, addptr, load, store, PointerType
 from triton_mlir.dialects import scf
 
-from util import hip_bindings_not_installed, hip_check
+from util import hip_bindings_not_installed, hip_check, backend
 
+pytest.mark.usefixtures("backend")
 pytest.mark.usefixtures("ctx")
 
 
@@ -345,25 +346,25 @@ def print_epilog():
     print(EPILOG, file=OUTPUT_BUF)
 
 
-def test_smoke(ctx):
-    HERE = Path(__file__).parent
+HERE = Path(__file__).parent
+sys.path.insert(0, str(HERE))
+
+
+@pytest.mark.parametrize("arch", ["gfx1100"])
+def test_smoke(ctx, backend, arch):
     with open(HERE / "matmul_kernel.mlir") as src:
         matmul_src = src.read()
 
     mod = ctx.module.parse(matmul_src)
     assert mod.operation.verify()
 
-    mod = make_ttir(mod)
-    options = parse_options("gfx1100")
-    mod = make_ttgir(mod, options)
-    llvm_mod, _ = make_llir(mod, options)
-    amdgcn = make_amdgcn(llvm_mod, options)
-    hsaco = make_hsaco(amdgcn, options)
+    triton_mod = unwrap_c_module_op(mod.operation)
+    hsaco = backend.compile(triton_mod, {"arch": arch})
+    assert len(hsaco)
+    assert "matmul_kernel" in str(hsaco)
 
 
 def test_round_trip(ctx):
-    HERE = Path(__file__).parent
-    sys.path.insert(0, str(HERE))
     with open(HERE / "matmul_kernel.mlir") as src:
         matmul_src = src.read()
 
@@ -371,7 +372,7 @@ def test_round_trip(ctx):
     assert mod.operation.verify()
 
     global OUTPUT_BUF
-    with open("e2e_matmul.py", "w") as OUTPUT_BUF:
+    with open(HERE / "e2e_matmul.py", "w") as OUTPUT_BUF:
         print_prolog()
         mod.operation.walk(generic_print_walk_callback, WalkOrder.PRE_ORDER)
         print_epilog()
@@ -382,10 +383,8 @@ def test_round_trip(ctx):
     assert str(e2e_matmul.ctx.module).strip() == matmul_src.strip()
 
 
-def test_compile(ctx):
-
-    HERE = Path(__file__).parent
-    sys.path.insert(0, str(HERE))
+@pytest.mark.parametrize("arch", ["gfx1100"])
+def test_compile(ctx, backend, arch):
     with open(HERE / "matmul_kernel.mlir") as src:
         matmul_src = src.read()
 
@@ -393,7 +392,7 @@ def test_compile(ctx):
     assert mod.operation.verify()
 
     global OUTPUT_BUF
-    with open("e2e_matmul.py", "w") as OUTPUT_BUF:
+    with open(HERE / "e2e_matmul.py", "w") as OUTPUT_BUF:
         print_prolog()
         mod.operation.walk(generic_print_walk_callback, WalkOrder.PRE_ORDER)
         print_epilog()
@@ -404,20 +403,107 @@ def test_compile(ctx):
     mod = ctx.module.parse(e2e_matmul.mod_str())
     assert mod.operation.verify()
 
-    mod = make_ttir(mod)
-    options = parse_options("gfx1100")
-    mod = make_ttgir(mod, options)
-    llvm_mod, _ = make_llir(mod, options)
-    amdgcn = make_amdgcn(llvm_mod, options)
-    hsaco = make_hsaco(amdgcn, options)
+    triton_mod = unwrap_c_module_op(mod.operation)
+    hsaco = backend.compile(triton_mod, {"arch": arch})
+    assert len(hsaco)
+    assert "matmul_kernel" in str(hsaco)
+
+
+def get_torch_pointer_hip(a):
+    from hip import hip
+
+    if a is None:
+        return None
+    attributes = hip.hipPointerAttribute_t()
+    data_ptr = hip.hipDeviceptr_t(a.data_ptr())
+    hip_check(hip.hipPointerGetAttributes(attributes, data_ptr))
+    return hip.hipDeviceptr_t(attributes.devicePointer)
+
+
+def get_torch_pointer_chip(a):
+    from triton_mlir import chip
+
+    if a is None:
+        return None
+    attributes = chip.hipPointerAttribute_t()
+    data_ptr = chip.hipDeviceptr_t(a.data_ptr())
+    chip_check(chip.hipPointerGetAttributes(ctypes.byref(attributes), data_ptr))
+    return chip.hipDeviceptr_t(attributes.devicePointer)
+
+
+def chip_check(status):
+    from triton_mlir import chip
+
+    if status != 0:
+        raise RuntimeError(
+            f"HIP Error {status}, {ctypes.string_at(chip.hipGetErrorString(status)).decode()}"
+        )
+
+
+try:
+    import torch
+except ImportError:
+
+    class torch:
+        class Tensor:
+            pass
+
+
+def launch(
+    function,
+    gridX,
+    gridY,
+    gridZ,
+    stream,
+    warp_size,
+    num_warps,
+    shared_memory,
+    *args,
+):
+    from triton_mlir import chip
+
+    from hip._util.types import DeviceArray
+
+    params = [None] * len(args)
+    addresses = [None] * len(args)
+    for i, p in enumerate(args):
+        if isinstance(p, torch.Tensor):
+            params[i] = get_torch_pointer_chip(p)
+            addresses[i] = ctypes.addressof(params[i])
+        elif isinstance(p, DeviceArray):
+            addresses[i] = params[i] = p.createRef().as_c_void_p()
+        elif isinstance(p, int):
+            params[i] = ctypes.c_int32(p)
+            addresses[i] = ctypes.addressof(params[i])
+        else:
+            raise NotImplementedError(f"{p=} not supported with {p=}")
+
+    global_scratch = chip.hipDeviceptr_t()
+    addresses += [ctypes.addressof(global_scratch)]
+    c_args = (ctypes.c_void_p * len(addresses))(*addresses)
+    function = ctypes.cast(function, chip.hipFunction_t)
+    stream = ctypes.cast(stream, chip.hipStream_t)
+    chip_check(
+        chip.hipModuleLaunchKernel(
+            function,
+            gridX,
+            gridY,
+            gridZ,
+            warp_size * num_warps,
+            1,
+            1,
+            shared_memory,
+            stream,
+            c_args,
+            None,
+        )
+    )
 
 
 @pytest.mark.skipif(hip_bindings_not_installed(), reason="hip not installed")
-def test_run(ctx):
+def test_run(ctx, backend):
     from hip import hip
 
-    HERE = Path(__file__).parent
-    sys.path.insert(0, str(HERE))
     with open(HERE / "matmul_kernel.mlir") as src:
         matmul_src = src.read()
 
@@ -425,57 +511,59 @@ def test_run(ctx):
     assert mod.operation.verify()
 
     global OUTPUT_BUF
-    with open("e2e_matmul.py", "w") as OUTPUT_BUF:
+    with open(HERE / "e2e_matmul.py", "w") as OUTPUT_BUF:
         print_prolog()
         mod.operation.walk(generic_print_walk_callback, WalkOrder.PRE_ORDER)
         print_epilog()
 
     # noinspection PyUnresolvedReferences
     import e2e_matmul
-
-    mod = ctx.module.parse(e2e_matmul.mod_str())
-    assert mod.operation.verify()
-    mod = make_ttir(mod)
-    with open(Path(__file__).parent / "matmul.tt.mlir", "w") as f:
-        f.write(str(mod))
 
     props = hip.hipDeviceProp_t()
     hip_check(hip.hipGetDeviceProperties(props, 0))
     arch = props.gcnArchName.decode()
-    options = parse_options(arch)
+    options = backend.parse_options({"arch": arch, "waves_per_eu": 8})
 
-    mod = make_ttgir(mod, options)
-    with open(Path(__file__).parent / "matmul.ttg.mlir", "w") as f:
-        f.write(str(mod))
-    llvm_mod, shared_memory = make_llir(mod, options)
-    with open(Path(__file__).parent / "matmul.ll", "w") as f:
-        f.write(str(llvm_mod))
-    amdgcn = make_amdgcn(llvm_mod, options)
-    with open(Path(__file__).parent / "matmul.amdgcn", "w") as f:
-        f.write(amdgcn)
-    hsaco = make_hsaco(amdgcn, options)
-    with open(Path(__file__).parent / "matmul.hsaco", "wb") as f:
-        f.write(hsaco)
-    with open(Path(__file__).parent / "matmul.hsaco", "rb") as f:
-        hsaco = f.read()
+    mod = ctx.module.parse(e2e_matmul.mod_str())
+    assert mod.operation.verify()
+    triton_mod = unwrap_c_module_op(mod.operation)
+    hsaco, metadata = backend.compile(
+        triton_mod,
+        options=options,
+        dump_ir=True,
+        ir_dump_dir=Path(__file__).parent / "e2e_matmul_dump",
+        dump_file_prefix="0",
+    )
 
     module = hip_check(hip.hipModuleLoadData(hsaco))
-    kernel = hip_check(hip.hipModuleGetFunction(module, b"matmul_kernel"))
+    function = hip_check(
+        hip.hipModuleGetFunction(module, metadata["name"].encode())
+    ).as_c_void_p()
 
     # kernel launch
 
     M, K, N = 16, 16, 16
-    a_h = np.ones((M, K), dtype=np.float32)
-    b_h = np.ones((K, N), dtype=np.float32)
+    BLOCK_SIZE_M = 8
+    BLOCK_SIZE_N = 8
+    BLOCK_SIZE_K = 4
+
+    a_h = np.random.rand(M, K).astype(dtype=np.float32)
+    b_h = np.random.rand(K, N).astype(dtype=np.float32)
     c_h = -3 * np.ones((M, N), dtype=np.float32)
 
     a_num_bytes = a_h.size * a_h.itemsize
     b_num_bytes = b_h.size * b_h.itemsize
     c_num_bytes = c_h.size * c_h.itemsize
 
-    a_d = hip_check(hip.hipMalloc(a_num_bytes))
-    b_d = hip_check(hip.hipMalloc(b_num_bytes))
-    c_d = hip_check(hip.hipMalloc(c_num_bytes))
+    a_d = hip_check(hip.hipMalloc(a_num_bytes)).configure(
+        typestr="float32", shape=(M, K)
+    )
+    b_d = hip_check(hip.hipMalloc(b_num_bytes)).configure(
+        typestr="float32", shape=(K, N)
+    )
+    c_d = hip_check(hip.hipMalloc(c_num_bytes)).configure(
+        typestr="float32", shape=(M, N)
+    )
 
     hip_check(
         hip.hipMemcpy(a_d, a_h, a_num_bytes, hip.hipMemcpyKind.hipMemcpyHostToDevice)
@@ -487,10 +575,6 @@ def test_run(ctx):
         hip.hipMemcpy(c_d, c_h, c_num_bytes, hip.hipMemcpyKind.hipMemcpyHostToDevice)
     )
 
-    BLOCK_SIZE_M = 8
-    BLOCK_SIZE_N = 8
-    BLOCK_SIZE_K = 4
-
     args = [
         a_d,
         b_d,
@@ -498,47 +582,34 @@ def test_run(ctx):
         M,
         N,
         K,
-        a_h.strides[0] // a_h.dtype.itemsize,
-        a_h.strides[1] // a_h.dtype.itemsize,
-        b_h.strides[0] // b_h.dtype.itemsize,
-        b_h.strides[1] // b_h.dtype.itemsize,
-        c_h.strides[0] // c_h.dtype.itemsize,
-        c_h.strides[1] // c_h.dtype.itemsize,
+        *(np.array(a_h.strides) // a_h.itemsize).tolist(),
+        *(np.array(b_h.strides) // b_h.itemsize).tolist(),
+        *(np.array(c_h.strides) // c_h.itemsize).tolist(),
     ]
-    ## launch
-    hip_check(
-        hip.hipModuleLaunchKernel(
-            kernel,
-            *(math.ceil(M / BLOCK_SIZE_M) * math.ceil(N / BLOCK_SIZE_N), 1, 1),
-            *(options.warp_size * options.num_warps, 1, 1),
-            sharedMemBytes=shared_memory,
-            stream=None,
-            kernelParams=None,
-            extra=args,
-        )
+    stream = 0
+    gridX = math.ceil(M / BLOCK_SIZE_M) * math.ceil(N / BLOCK_SIZE_N)
+    gridY = 1
+    gridZ = 1
+    num_warps = options.num_warps
+    shared_memory = metadata["shared"]
+
+    launch(
+        function,
+        gridX,
+        gridY,
+        gridZ,
+        stream,
+        options.warp_size,
+        num_warps,
+        shared_memory,
+        *args,
     )
 
-    # copy result back
-    hip_check(
-        hip.hipMemcpy(a_h, a_d, a_num_bytes, hip.hipMemcpyKind.hipMemcpyDeviceToHost)
-    )
-    hip_check(
-        hip.hipMemcpy(b_h, b_d, b_num_bytes, hip.hipMemcpyKind.hipMemcpyDeviceToHost)
-    )
     hip_check(
         hip.hipMemcpy(c_h, c_d, c_num_bytes, hip.hipMemcpyKind.hipMemcpyDeviceToHost)
     )
 
-    with np.printoptions(edgeitems=50, threshold=np.inf, linewidth=np.inf):
-        print(a_h, b_h)
-        print(c_h)
     assert np.allclose(c_h, a_h @ b_h)
-
-    hip_check(hip.hipFree(a_d))
-    hip_check(hip.hipFree(b_d))
-    hip_check(hip.hipFree(c_d))
-
-    hip_check(hip.hipModuleUnload(module))
 
 
 if __name__ == "__main__":

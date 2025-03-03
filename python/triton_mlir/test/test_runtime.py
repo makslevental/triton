@@ -15,20 +15,11 @@ from triton_mlir.extras.testing import mlir_ctx as ctx, filecheck, MLIRContext
 
 from triton_mlir.dialects import tt
 from triton_mlir.types import T
-from triton_mlir.compile import (
-    make_ttir,
-    make_ttgir,
-    parse_options,
-    make_llir,
-    make_amdgcn,
-    make_hsaco,
-)
+from triton_mlir.compiler import HIPBackend, unwrap_c_module_op, tritonir, llvm
 
-# noinspection PyUnresolvedReferences
-from triton_mlir.dialects.tt import splat, arange, addptr, load, store
+from util import hip_bindings_not_installed, hip_check, backend
 
-from util import hip_bindings_not_installed, hip_check
-
+pytest.mark.usefixtures("backend")
 pytest.mark.usefixtures("ctx")
 
 
@@ -89,7 +80,8 @@ def test_smoke():
 
 
 # https://triton-lang.org/main/getting-started/tutorials/01-vector-add.html
-def test_run_vector_add_bare(ctx):
+@pytest.mark.parametrize("arch", ["gfx1100"])
+def test_run_vector_add_bare(ctx, backend, arch):
     BLOCK_SIZE = 64
 
     @tt.jit
@@ -99,23 +91,23 @@ def test_run_vector_add_bare(ctx):
         v0 = tt.get_program_id(axis=tt.ProgramIDDim.X)
         c32 = arith.constant(BLOCK_SIZE, T.int32)
         v1 = v0 * c32
-        v2 = arange(0, BLOCK_SIZE)
-        v3 = splat(v1, (BLOCK_SIZE,))
+        v2 = tt.arange(0, BLOCK_SIZE)
+        v3 = tt.splat(v1, (BLOCK_SIZE,))
         v4 = arith.addi(v3, v2)
-        v5 = splat(n_elements, (BLOCK_SIZE,))
+        v5 = tt.splat(n_elements, (BLOCK_SIZE,))
         v6 = arith.cmpi("slt", v4, v5)
-        v7 = splat(x, (BLOCK_SIZE,))
-        v8 = addptr(v7, v4)
-        v9 = load(
+        v7 = tt.splat(x, (BLOCK_SIZE,))
+        v8 = tt.addptr(v7, v4)
+        v9 = tt.load(
             v8,
             v6,
             cache=tt.CacheModifier.NONE,
             evict=tt.EvictionPolicy.NORMAL,
             is_volatile=False,
         )
-        v10 = splat(y, (BLOCK_SIZE,))
-        v11 = addptr(v10, v4)
-        v12 = load(
+        v10 = tt.splat(y, (BLOCK_SIZE,))
+        v11 = tt.addptr(v10, v4)
+        v12 = tt.load(
             v11,
             v6,
             cache=tt.CacheModifier.NONE,
@@ -123,24 +115,16 @@ def test_run_vector_add_bare(ctx):
             is_volatile=False,
         )
         v13 = arith.addf(v9, v12)
-        v14 = splat(output, (BLOCK_SIZE,))
-        v15 = addptr(v14, v4)
-        store(v15, v13, v6)
+        v14 = tt.splat(output, (BLOCK_SIZE,))
+        v15 = tt.addptr(v14, v4)
+        tt.store(v15, v13, v6)
         tt.return_(srcs=[])
 
     vector_add.emit()
     ctx.module.operation.verify()
-    mod = make_ttir(ctx.module)
-
-    props = hip.hipDeviceProp_t()
-    hip_check(hip.hipGetDeviceProperties(props, 0))
-    arch = props.gcnArchName.decode()
-    options = parse_options(arch)
-
-    mod = make_ttgir(mod, options)
-    llvm_mod, _ = make_llir(mod, options)
-    amdgcn = make_amdgcn(llvm_mod, options)
-    hsaco = make_hsaco(amdgcn, options)
+    triton_mod = unwrap_c_module_op(ctx.module.operation)
+    hsaco, metadata = backend.compile(triton_mod, {"arch": arch})
+    assert metadata.get("shared") == 0
 
     props = hip.hipDeviceProp_t()
     hip_check(hip.hipGetDeviceProperties(props, 0))
@@ -201,7 +185,6 @@ def test_run_vector_add_bare(ctx):
     )
 
     for i, output_h_i in enumerate(output_h):
-        print(output_h_i, output_expected[i])
         if not math.isclose(output_h_i, output_expected[i], rel_tol=1e-6):
             raise RuntimeError(
                 f"values do not match, {output_h[i]=} vs. {output_expected[i]=}, {i=}"
@@ -215,7 +198,8 @@ def test_run_vector_add_bare(ctx):
 
 
 # https://triton-lang.org/main/getting-started/tutorials/01-vector-add.html
-def test_run_vector_add_np(ctx):
+@pytest.mark.parametrize("arch", ["gfx1100"])
+def test_run_vector_add_np(ctx, backend, arch):
     BLOCK_SIZE = 64
 
     @tt.jit
@@ -226,23 +210,23 @@ def test_run_vector_add_np(ctx):
         tt.print_(prefix=" pid: ", hex=False, args=[v0], is_signed=[1])
         c32 = arith.constant(BLOCK_SIZE, T.int32)
         v1 = v0 * c32
-        v2 = arange(0, BLOCK_SIZE)
-        v3 = splat(v1, (BLOCK_SIZE,))
+        v2 = tt.arange(0, BLOCK_SIZE)
+        v3 = tt.splat(v1, (BLOCK_SIZE,))
         v4 = arith.addi(v3, v2)
-        v5 = splat(n_elements, (BLOCK_SIZE,))
+        v5 = tt.splat(n_elements, (BLOCK_SIZE,))
         v6 = arith.cmpi("slt", v4, v5)
-        v7 = splat(x, (BLOCK_SIZE,))
-        v8 = addptr(v7, v4)
-        v9 = load(
+        v7 = tt.splat(x, (BLOCK_SIZE,))
+        v8 = tt.addptr(v7, v4)
+        v9 = tt.load(
             v8,
             v6,
             cache=tt.CacheModifier.NONE,
             evict=tt.EvictionPolicy.NORMAL,
             is_volatile=False,
         )
-        v10 = splat(y, (BLOCK_SIZE,))
-        v11 = addptr(v10, v4)
-        v12 = load(
+        v10 = tt.splat(y, (BLOCK_SIZE,))
+        v11 = tt.addptr(v10, v4)
+        v12 = tt.load(
             v11,
             v6,
             cache=tt.CacheModifier.NONE,
@@ -250,32 +234,16 @@ def test_run_vector_add_np(ctx):
             is_volatile=False,
         )
         v13 = arith.addf(v9, v12)
-        v14 = splat(output, (BLOCK_SIZE,))
-        v15 = addptr(v14, v4)
-        store(v15, v13, v6)
+        v14 = tt.splat(output, (BLOCK_SIZE,))
+        v15 = tt.addptr(v14, v4)
+        tt.store(v15, v13, v6)
         tt.return_(srcs=[])
 
     vector_add.emit()
     ctx.module.operation.verify()
-    mod = make_ttir(ctx.module)
-    with open(Path(__file__).parent / "vector_add.tt.mlir", "w") as f:
-        f.write(str(mod))
-
-    props = hip.hipDeviceProp_t()
-    hip_check(hip.hipGetDeviceProperties(props, 0))
-    arch = props.gcnArchName.decode()
-    options = parse_options(arch)
-
-    mod = make_ttgir(mod, options)
-    with open(Path(__file__).parent / "vector_add.ttg.mlir", "w") as f:
-        f.write(str(mod))
-    llvm_mod, _ = make_llir(mod, options)
-    with open(Path(__file__).parent / "vector_add.ll", "w") as f:
-        f.write(str(llvm_mod))
-    amdgcn = make_amdgcn(llvm_mod, options)
-    with open(Path(__file__).parent / "vector_add.amdgcn", "w") as f:
-        f.write(str(amdgcn))
-    hsaco = make_hsaco(amdgcn, options)
+    triton_mod = unwrap_c_module_op(ctx.module.operation)
+    hsaco, metadata = backend.compile(triton_mod, {"arch": arch})
+    assert metadata.get("shared") == 0
 
     props = hip.hipDeviceProp_t()
     hip_check(hip.hipGetDeviceProperties(props, 0))

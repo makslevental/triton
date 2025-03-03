@@ -116,16 +116,6 @@ jobs:
           
           popd
 
-      - name: "Test"
-        run: |
-          
-          $python3_command -m pip install pytest mlir-native-tools
-          if [[ "${{ matrix.os }}" == "ubuntu" ]] || [[ "${{ matrix.os }}" == "almalinux" ]]; then
-            $python3_command -m pip install hip-python --extra-index-url https://test.pypi.org/simple
-          fi
-          $python3_command -m pip install triton-mlir -f $PWD/wheelhouse
-          $python3_command -m pytest -s python/triton_mlir/test
-
       - name: Upload artifacts
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
@@ -141,9 +131,67 @@ jobs:
           path: ${{ steps.setup_base.outputs.cache-dir }}
           key: ${{ env.cache-key }}
 
-  release:
+  test:
 
     needs: [build]
+
+    strategy:
+      fail-fast: false
+      matrix:
+        runs-on: ["ubuntu-22.04", "macos-14", "macos-13"]
+        python-version: ["3.10", "3.11", "3.12"]
+        include: [
+          # {runs-on: "ubuntu-22.04", name: "manylinux_x86_64", os: "almalinux", arch: x86_64, container: "quay.io/pypa/manylinux_2_28_x86_64"},
+          {runs-on: "ubuntu-22.04", name: "ubuntu_x86_64", os: "ubuntu", arch: x86_64},
+          {runs-on: "macos-14", name: "macos_arm64", os: "macos", arch: arm64},
+          {runs-on: "macos-13", name: "macos_x86_64", os: "macos", arch: x86_64},
+        ]
+          # triton doesn't distribute a windows build of llvm...
+          # - name: "windows_x86_64"
+          #   runs-on: "windows-2019"
+          #   os: "windows"
+          #   arch: x86_64
+
+    runs-on: ${{ matrix.runs-on }}
+
+    name: "${{ matrix.name }} ${{ matrix.python-version }}"
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+
+      - name: "Check out repository"
+        uses: actions/checkout@v4.2.2
+        with:
+          submodules: false
+          sparse-checkout: 'python/triton_mlir/test'
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4.1.8
+        with:
+          name: triton_mlir_${{ matrix.name }}_${{ matrix.python-version }}_artifact
+          path: wheelhouse
+
+      - name: "Install Python"
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: "Test"
+        run: |
+          
+          pip install pytest mlir-native-tools
+          if [[ "${{ matrix.os }}" == "ubuntu" ]] || [[ "${{ matrix.os }}" == "almalinux" ]]; then
+            pip install hip-python --extra-index-url https://test.pypi.org/simple
+          fi
+          pip install triton-mlir -f $PWD/wheelhouse
+          pytest -s python/triton_mlir/test
+
+  release:
+
+    needs: [test]
     runs-on: ubuntu-22.04
     steps:
 
