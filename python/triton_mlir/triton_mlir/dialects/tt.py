@@ -57,11 +57,14 @@ def jit(
     )
 
 
-def arange(start, end, *, loc=None, ip=None):
+_make_range = make_range
+
+
+def make_range(start, end, *, loc=None, ip=None):
     if loc is None:
         loc = get_user_code_loc()
     result_type = _T.tensor(end - start, _T.i32())
-    return make_range(result_type, start, end, loc=loc, ip=ip)
+    return _make_range(result_type, start, end, loc=loc, ip=ip)
 
 
 _splat = splat

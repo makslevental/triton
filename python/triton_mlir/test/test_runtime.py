@@ -91,7 +91,7 @@ def test_run_vector_add_bare(ctx, backend, arch):
         v0 = tt.get_program_id(axis=tt.ProgramIDDim.X)
         c32 = arith.constant(BLOCK_SIZE, T.int32)
         v1 = v0 * c32
-        v2 = tt.arange(0, BLOCK_SIZE)
+        v2 = tt.make_range(0, BLOCK_SIZE)
         v3 = tt.splat(v1, (BLOCK_SIZE,))
         v4 = arith.addi(v3, v2)
         v5 = tt.splat(n_elements, (BLOCK_SIZE,))
@@ -210,7 +210,7 @@ def test_run_vector_add_np(ctx, backend, arch):
         tt.print_(prefix=" pid: ", hex=False, args=[v0], is_signed=[1])
         c32 = arith.constant(BLOCK_SIZE, T.int32)
         v1 = v0 * c32
-        v2 = tt.arange(0, BLOCK_SIZE)
+        v2 = tt.make_range(0, BLOCK_SIZE)
         v3 = tt.splat(v1, (BLOCK_SIZE,))
         v4 = arith.addi(v3, v2)
         v5 = tt.splat(n_elements, (BLOCK_SIZE,))

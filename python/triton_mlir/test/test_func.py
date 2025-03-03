@@ -10,7 +10,7 @@ from triton_mlir.dialects import tt
 from triton_mlir.types import T
 
 # noinspection PyUnresolvedReferences
-from triton_mlir.dialects.tt import splat, arange, addptr, load, store
+from triton_mlir.dialects.tt import splat, make_range, addptr, load, store
 
 pytest.mark.usefixtures("ctx")
 
@@ -23,7 +23,7 @@ def test_vadd(ctx):
         v0 = tt.get_program_id(axis=tt.ProgramIDDim.X)
         c32 = arith.constant(64, T.int32)
         v1 = v0 * c32
-        v2 = arange(0, 64)
+        v2 = make_range(0, 64)
         v3 = splat(v1, (64,))
         v4 = arith.addi(v3, v2)
         v5 = splat(arg3, (64,))
