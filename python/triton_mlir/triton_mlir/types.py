@@ -88,3 +88,4 @@ class T:
         return _T.bf16()
 
     tensor = lambda *args, **kwargs: _T.tensor(*args, **kwargs)
+    function = lambda *args, **kwargs: _T.function(*args, **kwargs)
