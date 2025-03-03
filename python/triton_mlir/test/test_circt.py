@@ -15,11 +15,6 @@ from triton_mlir.dialects import tt
 from triton_mlir.types import T
 from triton_mlir.passmanager import PassManager
 
-# noinspection PyUnresolvedReferences
-from triton_mlir.dialects.tt import splat, arange, addptr, load, store
-
-from triton_mlir.passes import TritonPipeline
-
 pytest.mark.usefixtures("ctx")
 
 
@@ -30,11 +25,9 @@ def test_vadd(ctx):
         v2 = v0 * c32
         v3 = arith.addi(v0, v2)
 
-
     print("before")
     print(ctx.module)
-    p = TritonPipeline().convert_arith_to_smt()
-    pm = PassManager.parse(p.materialize())
+    pm = PassManager.parse("builtin.module(convert-arith-to-smt)")
     pm.run(ctx.module.operation)
     print("after")
     print(ctx.module)
