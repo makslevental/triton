@@ -54,8 +54,19 @@ from triton_mlir.compiler import (
 )
 
 # noinspection PyUnresolvedReferences
-from triton_mlir.dialects.tt import PointerType
-from triton_mlir.dialects import scf
+from triton_mlir.dialects.tt import (
+    PointerType,
+    broadcast,
+    splat,
+    load,
+    dot,
+    addptr,
+    expand_dims,
+    store,
+    get_program_id,
+    make_range,
+)
+from triton_mlir.extras.dialects.ext import scf
 
 from util import hip_bindings_not_installed, hip_check, backend
 
@@ -610,14 +621,70 @@ def test_run(ctx, backend):
     assert np.allclose(c_h, a_h @ b_h)
 
 
+autotune_configs = [
+    {
+        "BLOCK_SIZE_M": 128,
+        "BLOCK_SIZE_N": 256,
+        "BLOCK_SIZE_K": 16,
+        "GROUP_SIZE_M": 1,
+        "WAVES_PER_EU": 2,
+        "NUM_WARPS": 4,
+    },
+    {
+        "BLOCK_SIZE_M": 128,
+        "BLOCK_SIZE_N": 256,
+        "BLOCK_SIZE_K": 16,
+        "GROUP_SIZE_M": 4,
+        "WAVES_PER_EU": 2,
+        "NUM_WARPS": 4,
+    },
+    {
+        "BLOCK_SIZE_M": 256,
+        "BLOCK_SIZE_N": 256,
+        "BLOCK_SIZE_K": 16,
+        "GROUP_SIZE_M": 4,
+        "WAVES_PER_EU": 2,
+        "NUM_WARPS": 8,
+    },
+    {
+        "BLOCK_SIZE_M": 128,
+        "BLOCK_SIZE_N": 128,
+        "BLOCK_SIZE_K": 32,
+        "GROUP_SIZE_M": 1,
+        "WAVES_PER_EU": 2,
+        "NUM_WARPS": 8,
+    },
+    {
+        "BLOCK_SIZE_M": 64,
+        "BLOCK_SIZE_N": 128,
+        "BLOCK_SIZE_K": 32,
+        "GROUP_SIZE_M": 8,
+        "WAVES_PER_EU": 3,
+        "NUM_WARPS": 4,
+    },
+    {
+        "BLOCK_SIZE_M": 64,
+        "BLOCK_SIZE_N": 64,
+        "BLOCK_SIZE_K": 32,
+        "GROUP_SIZE_M": 1,
+        "WAVES_PER_EU": 8,
+        "NUM_WARPS": 4,
+    },
+]
+
+
 @pytest.mark.skipif(hip_bindings_not_installed(), reason="hip not installed")
-def test_inline_mod(ctx, backend):
+@pytest.mark.parametrize("autotune_config", autotune_configs)
+def test_inline_mod(ctx, backend, autotune_config):
     from hip import hip
 
-    BLOCK_SIZE_M = 8
-    BLOCK_SIZE_N = 8
-    BLOCK_SIZE_K = 4
-    GROUP_SIZE_M = 1
+    M, K, N = 512, 512, 512
+    BLOCK_SIZE_M = autotune_config["BLOCK_SIZE_M"]
+    BLOCK_SIZE_N = autotune_config["BLOCK_SIZE_N"]
+    BLOCK_SIZE_K = autotune_config["BLOCK_SIZE_K"]
+    GROUP_SIZE_M = autotune_config["GROUP_SIZE_M"]
+    WAVES_PER_EU = autotune_config["WAVES_PER_EU"]
+    NUM_WARPS = autotune_config["NUM_WARPS"]
 
     @tt.jit(
         arg_attrs=ArrayAttr.parse(
@@ -643,52 +710,54 @@ def test_inline_mod(ctx, backend):
     ):
         c0_i32 = arith.constant(0, T.i32)
         c1_i32 = arith.constant(1, T.i32)
-        GROUP_SIZE_M_ = arith.constant(1, T.i32)
-        BLOCK_SIZE_K_ = arith.constant(BLOCK_SIZE_K, T.i32)
         BLOCK_SIZE_M_ = arith.constant(BLOCK_SIZE_M, T.i32)
         BLOCK_SIZE_N_ = arith.constant(BLOCK_SIZE_N, T.i32)
+        BLOCK_SIZE_K_ = arith.constant(BLOCK_SIZE_K, T.i32)
+        GROUP_SIZE_M_ = arith.constant(GROUP_SIZE_M, T.i32)
 
-        pid = tt.get_program_id(axis=0)
+        pid = get_program_id(axis=0)
 
         num_pid_m = arith.ceildivsi(M, BLOCK_SIZE_M_)
         num_pid_n = arith.ceildivsi(N, BLOCK_SIZE_N_)
         num_pid_in_group = GROUP_SIZE_M * num_pid_n
-        group_id = pid / num_pid_in_group
+        group_id = pid // num_pid_in_group
         first_pid_m = group_id * GROUP_SIZE_M
         group_size_m = arith.minsi(num_pid_m - first_pid_m, GROUP_SIZE_M_)
-        pid_m = first_pid_m + ((pid % num_pid_n) % group_size_m)
-        pid_n = (pid % num_pid_n) / group_size_m
+        pid_m = first_pid_m + ((pid % num_pid_in_group) % group_size_m)
+        pid_n = (pid % num_pid_in_group) // group_size_m
 
-        arr = tt.arange(start=0, end=BLOCK_SIZE_M)
+        v15 = splat(pid_m * BLOCK_SIZE_M, (BLOCK_SIZE_M,)) + make_range(
+            start=0, end=BLOCK_SIZE_M
+        )
+        offs_am = v15 % splat(M, (BLOCK_SIZE_M,))
 
-        v15 = tt.splat(pid_m * BLOCK_SIZE_M, (BLOCK_SIZE_M,)) + arr
-        offs_am = v15 % tt.splat(M, (BLOCK_SIZE_M,))
+        v20 = splat(pid_n * BLOCK_SIZE_N, (BLOCK_SIZE_N,)) + make_range(
+            start=0, end=BLOCK_SIZE_N
+        )
+        offs_bn = v20 % splat(N, (BLOCK_SIZE_N,))
 
-        v20 = tt.splat(pid_n * BLOCK_SIZE_N, (BLOCK_SIZE_N,)) + arr
-        offs_bn = v20 % tt.splat(N, (BLOCK_SIZE_N,))
+        offs_k = make_range(start=0, end=BLOCK_SIZE_K)
 
-        offs_k = tt.arange(start=0, end=BLOCK_SIZE_K)
-
-        v26 = tt.expand_dims(offs_am, axis=1) * tt.splat(stride_am, (BLOCK_SIZE_M, 1))
-        v27 = tt.expand_dims(offs_k, axis=0)
-        v29 = v27 * tt.splat(stride_ak, (1, BLOCK_SIZE_K))
-        v30 = tt.broadcast(v26, (BLOCK_SIZE_M, BLOCK_SIZE_K))
-        v31 = tt.broadcast(v29, (BLOCK_SIZE_M, BLOCK_SIZE_K))
+        v26 = expand_dims(offs_am, axis=1) * splat(stride_am, (BLOCK_SIZE_M, 1))
+        v27 = expand_dims(offs_k, axis=0)
+        v29 = v27 * splat(stride_ak, (1, BLOCK_SIZE_K))
+        v30 = broadcast(v26, (BLOCK_SIZE_M, BLOCK_SIZE_K))
+        v31 = broadcast(v29, (BLOCK_SIZE_M, BLOCK_SIZE_K))
         v32 = v30 + v31
-        v33 = tt.splat(a_ptr, (BLOCK_SIZE_M, BLOCK_SIZE_K))
-        a_ptrs = tt.addptr(v33, offset=v32)
+        v33 = splat(a_ptr, (BLOCK_SIZE_M, BLOCK_SIZE_K))
+        a_ptrs = addptr(v33, offset=v32)
 
-        v35 = tt.expand_dims(offs_k, axis=1)
-        v37 = v35 * tt.splat(stride_bk, (BLOCK_SIZE_K, 1))
-        v40 = tt.expand_dims(offs_bn, axis=0) * tt.splat(stride_bn, (1, BLOCK_SIZE_N))
-        v41 = tt.broadcast(v37, (BLOCK_SIZE_K, BLOCK_SIZE_N))
-        v42 = tt.broadcast(v40, (BLOCK_SIZE_K, BLOCK_SIZE_N))
+        v35 = expand_dims(offs_k, axis=1)
+        v37 = v35 * splat(stride_bk, (BLOCK_SIZE_K, 1))
+        v40 = expand_dims(offs_bn, axis=0) * splat(stride_bn, (1, BLOCK_SIZE_N))
+        v41 = broadcast(v37, (BLOCK_SIZE_K, BLOCK_SIZE_N))
+        v42 = broadcast(v40, (BLOCK_SIZE_K, BLOCK_SIZE_N))
         v43 = v41 + v42
-        v44 = tt.splat(b_ptr, (BLOCK_SIZE_K, BLOCK_SIZE_N))
-        b_ptrs = tt.addptr(v44, offset=v43)
+        v44 = splat(b_ptr, (BLOCK_SIZE_K, BLOCK_SIZE_N))
+        b_ptrs = addptr(v44, offset=v43)
 
-        a_ptr_incr = tt.splat(stride_ak * BLOCK_SIZE_K, (BLOCK_SIZE_M, BLOCK_SIZE_K))
-        b_ptr_incr = tt.splat(stride_bk * BLOCK_SIZE_K, (BLOCK_SIZE_K, BLOCK_SIZE_N))
+        a_ptr_incr = splat(stride_ak * BLOCK_SIZE_K, (BLOCK_SIZE_M, BLOCK_SIZE_K))
+        b_ptr_incr = splat(stride_bk * BLOCK_SIZE_K, (BLOCK_SIZE_K, BLOCK_SIZE_N))
 
         accum = arith.constant(
             np.full([BLOCK_SIZE_M, BLOCK_SIZE_N], 0.0, np.float32),
@@ -703,50 +772,47 @@ def test_inline_mod(ctx, backend):
             T.tensor(BLOCK_SIZE_M, BLOCK_SIZE_K, T.f32),
         )
         stop = arith.ceildivsi(K, BLOCK_SIZE_K_)
-        for k, [accum, a_ptrs, b_ptrs], [c, _a_ptrs, _b_ptrs] in scf.for_(
-            c0_i32, stop, c1_i32, iter_args=[accum, a_ptrs, b_ptrs]
+        for k, [accum, a_ptrs, b_ptrs], _ in scf.range_(
+            0, stop, 1, iter_args=[accum, a_ptrs, b_ptrs]
         ):
             v72 = K - k * BLOCK_SIZE_K
 
-            a_mask = tt.broadcast(
-                v27 < tt.splat(v72, (1, BLOCK_SIZE_K)), (BLOCK_SIZE_M, BLOCK_SIZE_K)
+            a_mask = broadcast(
+                v27 < splat(v72, (1, BLOCK_SIZE_K)), (BLOCK_SIZE_M, BLOCK_SIZE_K)
             )
-            a = tt.load(a_ptrs, mask=a_mask, other=cst_1)
+            a = load(a_ptrs, mask=a_mask, other=cst_1)
 
-            b_mask = tt.broadcast(
-                v35 < tt.splat(v72, (BLOCK_SIZE_K, 1)), (BLOCK_SIZE_K, BLOCK_SIZE_N)
+            b_mask = broadcast(
+                v35 < splat(v72, (BLOCK_SIZE_K, 1)), (BLOCK_SIZE_K, BLOCK_SIZE_N)
             )
-            b = tt.load(b_ptrs, mask=b_mask, other=cst_0)
+            b = load(b_ptrs, mask=b_mask, other=cst_0)
 
-            accum = tt.dot(a, b, c=accum)
-            a_ptrs = tt.addptr(a_ptrs, offset=a_ptr_incr)
-            b_ptrs = tt.addptr(b_ptrs, offset=b_ptr_incr)
+            accum = dot(a, b, c=accum)
+            a_ptrs = addptr(a_ptrs, offset=a_ptr_incr)
+            b_ptrs = addptr(b_ptrs, offset=b_ptr_incr)
 
-            scf.yield_(results_=[accum, a_ptrs, b_ptrs])
+            # these are the results
+            c, _a_ptrs, _b_ptrs = scf.yield_(accum, a_ptrs, b_ptrs)
 
-        offs_cm = tt.expand_dims(v15, axis=1)
+        offs_cm = expand_dims(v15, axis=1)
 
-        c_ptr = tt.splat(c_ptr, (BLOCK_SIZE_M, 1))
-        c_ptr = tt.addptr(
-            c_ptr, offset=tt.splat(stride_cm, (BLOCK_SIZE_M, 1)) * offs_cm
+        c_ptr = splat(c_ptr, (BLOCK_SIZE_M, 1))
+        c_ptr = addptr(c_ptr, offset=splat(stride_cm, (BLOCK_SIZE_M, 1)) * offs_cm)
+        c_ptr = broadcast(c_ptr, (BLOCK_SIZE_M, BLOCK_SIZE_N))
+
+        offs_cn = expand_dims(v20, axis=0)
+        v60 = splat(stride_cn, (1, BLOCK_SIZE_N)) * offs_cn
+        c_ptrs = addptr(c_ptr, offset=broadcast(v60, (BLOCK_SIZE_M, BLOCK_SIZE_N)))
+
+        v68 = broadcast(
+            offs_cm < splat(M, (BLOCK_SIZE_M, 1)), (BLOCK_SIZE_M, BLOCK_SIZE_N)
         )
-        c_ptr = tt.broadcast(c_ptr, (BLOCK_SIZE_M, BLOCK_SIZE_N))
-
-        offs_cn = tt.expand_dims(v20, axis=0)
-        v60 = tt.splat(stride_cn, (1, BLOCK_SIZE_N)) * offs_cn
-        c_ptrs = tt.addptr(
-            c_ptr, offset=tt.broadcast(v60, (BLOCK_SIZE_M, BLOCK_SIZE_N))
-        )
-
-        v68 = tt.broadcast(
-            offs_cm < tt.splat(M, (BLOCK_SIZE_M, 1)), (BLOCK_SIZE_M, BLOCK_SIZE_N)
-        )
-        v69 = tt.broadcast(
-            offs_cn < tt.splat(N, (1, BLOCK_SIZE_N)), (BLOCK_SIZE_M, BLOCK_SIZE_N)
+        v69 = broadcast(
+            offs_cn < splat(N, (1, BLOCK_SIZE_N)), (BLOCK_SIZE_M, BLOCK_SIZE_N)
         )
         c_mask = v68 & v69
 
-        tt.store(c_ptrs, value=c, mask=c_mask)
+        store(c_ptrs, value=c, mask=c_mask)
 
         tt.return_(srcs=[])
 
@@ -757,13 +823,16 @@ def test_inline_mod(ctx, backend):
     props = hip.hipDeviceProp_t()
     hip_check(hip.hipGetDeviceProperties(props, 0))
     arch = props.gcnArchName.decode()
-    options = backend.parse_options({"arch": arch, "waves_per_eu": 8})
+    options = backend.parse_options(
+        {"arch": arch, "waves_per_eu": WAVES_PER_EU, "num_warps": NUM_WARPS}
+    )
 
     hsaco, metadata = backend.compile(
         triton_mod,
         options=options,
         dump_ir=True,
-        ir_dump_dir=Path(__file__).parent / "matmul_kernel_2",
+        ir_dump_dir=Path(__file__).parent
+        / f"matmul_kernel_2_group_size_{GROUP_SIZE_M}",
     )
 
     module = hip_check(hip.hipModuleLoadData(hsaco))
@@ -773,7 +842,6 @@ def test_inline_mod(ctx, backend):
 
     # kernel launch
 
-    M, K, N = 16, 16, 16
     a_h = np.random.rand(M, K).astype(dtype=np.float32)
     b_h = np.random.rand(K, N).astype(dtype=np.float32)
     c_h = -3 * np.ones((M, N), dtype=np.float32)
@@ -806,7 +874,6 @@ def test_inline_mod(ctx, backend):
     gridX = math.ceil(M / BLOCK_SIZE_M) * math.ceil(N / BLOCK_SIZE_N)
     gridY = 1
     gridZ = 1
-    num_warps = options.num_warps
     shared_memory = metadata["shared"]
 
     launch(
@@ -816,7 +883,7 @@ def test_inline_mod(ctx, backend):
         gridZ,
         stream,
         options.warp_size,
-        num_warps,
+        options.num_warps,
         shared_memory,
         a_d,
         b_d,
@@ -829,11 +896,13 @@ def test_inline_mod(ctx, backend):
         *(np.array(c_h.strides) // c_h.itemsize).tolist(),
     )
 
+    correct = a_h @ b_h
+    assert np.allclose(c_h, -3.0)
+    assert not np.allclose(correct, c_h)
     hip_check(
         hip.hipMemcpy(c_h, c_d, c_num_bytes, hip.hipMemcpyKind.hipMemcpyDeviceToHost)
     )
-
-    assert np.allclose(c_h, a_h @ b_h)
+    assert np.allclose(c_h, correct)
 
 
 if __name__ == "__main__":
