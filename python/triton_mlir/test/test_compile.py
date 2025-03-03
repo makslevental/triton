@@ -46,7 +46,7 @@ def test_make_ttir(ctx, backend):
         v0 = tt.get_program_id(axis=tt.ProgramIDDim.X)
         c32 = arith.constant(64, T.int32)
         v1 = v0 * c32
-        v2 = tt.arange(0, 64)
+        v2 = tt.make_range(0, 64)
         v3 = tt.splat(v1, (64,))
         v4 = arith.addi(v3, v2)
         v5 = tt.splat(arg3, (64,))
@@ -93,7 +93,7 @@ def test_make_ttgir(ctx, backend, arch):
         v0 = tt.get_program_id(axis=tt.ProgramIDDim.X)
         c32 = arith.constant(64, T.int32)
         v1 = v0 * c32
-        v2 = tt.arange(0, 64)
+        v2 = tt.make_range(0, 64)
         v3 = tt.splat(v1, (64,))
         v4 = arith.addi(v3, v2)
         v5 = tt.splat(arg3, (64,))
@@ -145,7 +145,7 @@ def test_make_llir(ctx, backend, arch):
         v0 = tt.get_program_id(axis=tt.ProgramIDDim.X)
         c32 = arith.constant(64, T.int32)
         v1 = v0 * c32
-        v2 = tt.arange(0, 64)
+        v2 = tt.make_range(0, 64)
         v3 = tt.splat(v1, (64,))
         v4 = arith.addi(v3, v2)
         v5 = tt.splat(arg3, (64,))
@@ -203,7 +203,7 @@ def test_make_amdgcn(ctx, backend, arch):
         v0 = tt.get_program_id(axis=tt.ProgramIDDim.X)
         c32 = arith.constant(64, T.int32)
         v1 = v0 * c32
-        v2 = tt.arange(0, 64)
+        v2 = tt.make_range(0, 64)
         v3 = tt.splat(v1, (64,))
         v4 = arith.addi(v3, v2)
         v5 = tt.splat(arg3, (64,))
@@ -265,7 +265,7 @@ def test_make_hsaco(ctx, backend, arch):
         v0 = tt.get_program_id(axis=tt.ProgramIDDim.X)
         c32 = arith.constant(64, T.int32)
         v1 = v0 * c32
-        v2 = tt.arange(0, 64)
+        v2 = tt.make_range(0, 64)
         v3 = tt.splat(v1, (64,))
         v4 = arith.addi(v3, v2)
         v5 = tt.splat(arg3, (64,))
@@ -329,7 +329,7 @@ def test_compile(ctx, backend, arch):
         v0 = tt.get_program_id(axis=tt.ProgramIDDim.X)
         c32 = arith.constant(64, T.int32)
         v1 = v0 * c32
-        v2 = tt.arange(0, 64)
+        v2 = tt.make_range(0, 64)
         v3 = tt.splat(v1, (64,))
         v4 = arith.addi(v3, v2)
         v5 = tt.splat(arg3, (64,))
