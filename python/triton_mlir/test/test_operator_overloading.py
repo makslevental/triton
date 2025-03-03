@@ -51,7 +51,7 @@ def test_vadd(ctx: MLIRContext):
         pid = tt.get_program_id(axis=tt.ProgramIDDim.X)
         block_size = arith.constant(BLOCK_SIZE, T.int32)
         block_start = pid * block_size
-        offsets = block_start + tt.arange(0, BLOCK_SIZE)
+        offsets = block_start + tt.make_range(0, BLOCK_SIZE)
         mask = offsets < n_elements
 
         x = tt.load(x_ptr + offsets, mask)
@@ -107,7 +107,7 @@ def test_vadd_set_get(ctx: MLIRContext):
         pid = tt.get_program_id(axis=tt.ProgramIDDim.X)
         block_size = arith.constant(BLOCK_SIZE, T.int32)
         block_start = pid * block_size
-        offsets = block_start + tt.arange(0, BLOCK_SIZE)
+        offsets = block_start + tt.make_range(0, BLOCK_SIZE)
         mask = offsets < n_elements
 
         x_ptr += offsets
@@ -184,11 +184,11 @@ def test_matmul(ctx: MLIRContext):
         pid_m = first_pid_m + (pid % group_size_m)
         pid_n = (pid % num_pid_in_group) // group_size_m
 
-        # offs_am = (pid_m * BLOCK_SIZE_M + tt.arange(0, BLOCK_SIZE_M)) % M
-        # offs_bn = (pid_n * BLOCK_SIZE_N + tt.arange(0, BLOCK_SIZE_N)) % N
-        offs_am = pid_m * BLOCK_SIZE_M + tt.arange(0, BLOCK_SIZE_M)
-        offs_bn = pid_n * BLOCK_SIZE_N + tt.arange(0, BLOCK_SIZE_N)
-        offs_k = tt.arange(0, BLOCK_SIZE_K)
+        # offs_am = (pid_m * BLOCK_SIZE_M + tt.make_range(0, BLOCK_SIZE_M)) % M
+        # offs_bn = (pid_n * BLOCK_SIZE_N + tt.make_range(0, BLOCK_SIZE_N)) % N
+        offs_am = pid_m * BLOCK_SIZE_M + tt.make_range(0, BLOCK_SIZE_M)
+        offs_bn = pid_n * BLOCK_SIZE_N + tt.make_range(0, BLOCK_SIZE_N)
+        offs_k = tt.make_range(0, BLOCK_SIZE_K)
         a_ptrs = a_ptr + (offs_am[:, None] * stride_am + offs_k[None, :] * stride_ak)
         b_ptrs = b_ptr + (offs_k[:, None] * stride_bk + offs_bn[None, :] * stride_bn)
 
@@ -214,8 +214,8 @@ def test_matmul(ctx: MLIRContext):
 
         c = acc
 
-        offs_cm = pid_m * BLOCK_SIZE_M + tt.arange(0, BLOCK_SIZE_M)
-        offs_cn = pid_n * BLOCK_SIZE_N + tt.arange(0, BLOCK_SIZE_N)
+        offs_cm = pid_m * BLOCK_SIZE_M + tt.make_range(0, BLOCK_SIZE_M)
+        offs_cn = pid_n * BLOCK_SIZE_N + tt.make_range(0, BLOCK_SIZE_N)
         c_ptrs = c_ptr + stride_cm * offs_cm[:, None] + stride_cn * offs_cn[None, :]
         c_mask = (offs_cm[:, None] < M) & (offs_cn[None, :] < N)
         tt.store(c_ptrs, c, mask=c_mask)

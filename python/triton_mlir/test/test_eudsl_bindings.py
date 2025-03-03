@@ -6,7 +6,7 @@ from triton_mlir.ir import (
 )
 
 # noinspection PyUnresolvedReferences
-from triton_mlir.dialects.tt import splat, arange, addptr, load, store
+from triton_mlir.dialects.tt import splat, make_range, addptr, load, store
 from triton_mlir.dialects.ttg import SwizzledSharedEncodingAttr, CTALayoutAttr
 
 # noinspection PyUnresolvedReferences
