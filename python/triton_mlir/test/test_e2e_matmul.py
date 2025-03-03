@@ -38,11 +38,12 @@ from triton_mlir.ir import (
 
 # this needs to be below the triton_mlir_bindings
 from triton_mlir.extras.dialects.ext import arith
+from triton_mlir.dialects.arith import IntegerOverflowFlags
 
 # noinspection PyUnresolvedReferences
 from triton_mlir.extras.testing import mlir_ctx as ctx, filecheck, MLIRContext
 
-from triton_mlir.dialects import tt, builtin
+from triton_mlir.dialects import tt, scf, llvm, builtin
 from triton_mlir.types import T
 from triton_mlir.compiler import (
     HIPBackend,
@@ -53,7 +54,7 @@ from triton_mlir.compiler import (
 )
 
 # noinspection PyUnresolvedReferences
-from triton_mlir.dialects.tt import splat, arange, addptr, load, store, PointerType
+from triton_mlir.dialects.tt import PointerType
 from triton_mlir.dialects import scf
 
 from util import hip_bindings_not_installed, hip_check, backend
@@ -575,17 +576,6 @@ def test_run(ctx, backend):
         hip.hipMemcpy(c_d, c_h, c_num_bytes, hip.hipMemcpyKind.hipMemcpyHostToDevice)
     )
 
-    args = [
-        a_d,
-        b_d,
-        c_d,
-        M,
-        N,
-        K,
-        *(np.array(a_h.strides) // a_h.itemsize).tolist(),
-        *(np.array(b_h.strides) // b_h.itemsize).tolist(),
-        *(np.array(c_h.strides) // c_h.itemsize).tolist(),
-    ]
     stream = 0
     gridX = math.ceil(M / BLOCK_SIZE_M) * math.ceil(N / BLOCK_SIZE_N)
     gridY = 1
@@ -602,7 +592,241 @@ def test_run(ctx, backend):
         options.warp_size,
         num_warps,
         shared_memory,
-        *args,
+        a_d,
+        b_d,
+        c_d,
+        M,
+        N,
+        K,
+        *(np.array(a_h.strides) // a_h.itemsize).tolist(),
+        *(np.array(b_h.strides) // b_h.itemsize).tolist(),
+        *(np.array(c_h.strides) // c_h.itemsize).tolist(),
+    )
+
+    hip_check(
+        hip.hipMemcpy(c_h, c_d, c_num_bytes, hip.hipMemcpyKind.hipMemcpyDeviceToHost)
+    )
+
+    assert np.allclose(c_h, a_h @ b_h)
+
+
+@pytest.mark.skipif(hip_bindings_not_installed(), reason="hip not installed")
+def test_inline_mod(ctx, backend):
+    from hip import hip
+
+    BLOCK_SIZE_M = 8
+    BLOCK_SIZE_N = 8
+    BLOCK_SIZE_K = 4
+    GROUP_SIZE_M = 1
+
+    @tt.jit(
+        arg_attrs=ArrayAttr.parse(
+            "[{tt.divisibility = 16 : i32, tt.pointer_range = 32 : i32}, {tt.divisibility = 16 : i32, tt.pointer_range = 32 : i32}, {tt.divisibility = 16 : i32, tt.pointer_range = 32 : i32}, {}, {}, {}, {}, {}, {}, {}, {}, {}]"
+        ),
+        noinline=False,
+        sym_name="matmul_kernel_2",
+        sym_visibility="public",
+    )
+    def matmul_kernel_2(
+        a_ptr: +T.f32,
+        b_ptr: +T.f32,
+        c_ptr: +T.f32,
+        M: T.i32,
+        N: T.i32,
+        K: T.i32,
+        stride_am: T.i32,
+        stride_ak: T.i32,
+        stride_bk: T.i32,
+        stride_bn: T.i32,
+        stride_cm: T.i32,
+        stride_cn: T.i32,
+    ):
+        c0_i32 = arith.constant(0, T.i32)
+        c1_i32 = arith.constant(1, T.i32)
+        GROUP_SIZE_M_ = arith.constant(1, T.i32)
+        BLOCK_SIZE_K_ = arith.constant(BLOCK_SIZE_K, T.i32)
+        BLOCK_SIZE_M_ = arith.constant(BLOCK_SIZE_M, T.i32)
+        BLOCK_SIZE_N_ = arith.constant(BLOCK_SIZE_N, T.i32)
+
+        pid = tt.get_program_id(axis=0)
+
+        num_pid_m = arith.ceildivsi(M, BLOCK_SIZE_M_)
+        num_pid_n = arith.ceildivsi(N, BLOCK_SIZE_N_)
+        num_pid_in_group = GROUP_SIZE_M * num_pid_n
+        group_id = pid / num_pid_in_group
+        first_pid_m = group_id * GROUP_SIZE_M
+        group_size_m = arith.minsi(num_pid_m - first_pid_m, GROUP_SIZE_M_)
+        pid_m = first_pid_m + ((pid % num_pid_n) % group_size_m)
+        pid_n = (pid % num_pid_n) / group_size_m
+
+        arr = tt.arange(start=0, end=BLOCK_SIZE_M)
+
+        v15 = tt.splat(pid_m * BLOCK_SIZE_M, (BLOCK_SIZE_M,)) + arr
+        offs_am = v15 % tt.splat(M, (BLOCK_SIZE_M,))
+
+        v20 = tt.splat(pid_n * BLOCK_SIZE_N, (BLOCK_SIZE_N,)) + arr
+        offs_bn = v20 % tt.splat(N, (BLOCK_SIZE_N,))
+
+        offs_k = tt.arange(start=0, end=BLOCK_SIZE_K)
+
+        v26 = tt.expand_dims(offs_am, axis=1) * tt.splat(stride_am, (BLOCK_SIZE_M, 1))
+        v27 = tt.expand_dims(offs_k, axis=0)
+        v29 = v27 * tt.splat(stride_ak, (1, BLOCK_SIZE_K))
+        v30 = tt.broadcast(v26, (BLOCK_SIZE_M, BLOCK_SIZE_K))
+        v31 = tt.broadcast(v29, (BLOCK_SIZE_M, BLOCK_SIZE_K))
+        v32 = v30 + v31
+        v33 = tt.splat(a_ptr, (BLOCK_SIZE_M, BLOCK_SIZE_K))
+        a_ptrs = tt.addptr(v33, offset=v32)
+
+        v35 = tt.expand_dims(offs_k, axis=1)
+        v37 = v35 * tt.splat(stride_bk, (BLOCK_SIZE_K, 1))
+        v40 = tt.expand_dims(offs_bn, axis=0) * tt.splat(stride_bn, (1, BLOCK_SIZE_N))
+        v41 = tt.broadcast(v37, (BLOCK_SIZE_K, BLOCK_SIZE_N))
+        v42 = tt.broadcast(v40, (BLOCK_SIZE_K, BLOCK_SIZE_N))
+        v43 = v41 + v42
+        v44 = tt.splat(b_ptr, (BLOCK_SIZE_K, BLOCK_SIZE_N))
+        b_ptrs = tt.addptr(v44, offset=v43)
+
+        a_ptr_incr = tt.splat(stride_ak * BLOCK_SIZE_K, (BLOCK_SIZE_M, BLOCK_SIZE_K))
+        b_ptr_incr = tt.splat(stride_bk * BLOCK_SIZE_K, (BLOCK_SIZE_K, BLOCK_SIZE_N))
+
+        accum = arith.constant(
+            np.full([BLOCK_SIZE_M, BLOCK_SIZE_N], 0.0, np.float32),
+            T.tensor(BLOCK_SIZE_M, BLOCK_SIZE_N, T.f32),
+        )
+        cst_0 = arith.constant(
+            np.full([BLOCK_SIZE_K, BLOCK_SIZE_N], 0.0, np.float32),
+            T.tensor(BLOCK_SIZE_K, BLOCK_SIZE_N, T.f32),
+        )
+        cst_1 = arith.constant(
+            np.full([BLOCK_SIZE_M, BLOCK_SIZE_K], 0.0, np.float32),
+            T.tensor(BLOCK_SIZE_M, BLOCK_SIZE_K, T.f32),
+        )
+        stop = arith.ceildivsi(K, BLOCK_SIZE_K_)
+        for k, [accum, a_ptrs, b_ptrs], [c, _a_ptrs, _b_ptrs] in scf.for_(
+            c0_i32, stop, c1_i32, iter_args=[accum, a_ptrs, b_ptrs]
+        ):
+            v72 = K - k * BLOCK_SIZE_K
+
+            a_mask = tt.broadcast(
+                v27 < tt.splat(v72, (1, BLOCK_SIZE_K)), (BLOCK_SIZE_M, BLOCK_SIZE_K)
+            )
+            a = tt.load(a_ptrs, mask=a_mask, other=cst_1)
+
+            b_mask = tt.broadcast(
+                v35 < tt.splat(v72, (BLOCK_SIZE_K, 1)), (BLOCK_SIZE_K, BLOCK_SIZE_N)
+            )
+            b = tt.load(b_ptrs, mask=b_mask, other=cst_0)
+
+            accum = tt.dot(a, b, c=accum)
+            a_ptrs = tt.addptr(a_ptrs, offset=a_ptr_incr)
+            b_ptrs = tt.addptr(b_ptrs, offset=b_ptr_incr)
+
+            scf.yield_(results_=[accum, a_ptrs, b_ptrs])
+
+        offs_cm = tt.expand_dims(v15, axis=1)
+
+        c_ptr = tt.splat(c_ptr, (BLOCK_SIZE_M, 1))
+        c_ptr = tt.addptr(
+            c_ptr, offset=tt.splat(stride_cm, (BLOCK_SIZE_M, 1)) * offs_cm
+        )
+        c_ptr = tt.broadcast(c_ptr, (BLOCK_SIZE_M, BLOCK_SIZE_N))
+
+        offs_cn = tt.expand_dims(v20, axis=0)
+        v60 = tt.splat(stride_cn, (1, BLOCK_SIZE_N)) * offs_cn
+        c_ptrs = tt.addptr(
+            c_ptr, offset=tt.broadcast(v60, (BLOCK_SIZE_M, BLOCK_SIZE_N))
+        )
+
+        v68 = tt.broadcast(
+            offs_cm < tt.splat(M, (BLOCK_SIZE_M, 1)), (BLOCK_SIZE_M, BLOCK_SIZE_N)
+        )
+        v69 = tt.broadcast(
+            offs_cn < tt.splat(N, (1, BLOCK_SIZE_N)), (BLOCK_SIZE_M, BLOCK_SIZE_N)
+        )
+        c_mask = v68 & v69
+
+        tt.store(c_ptrs, value=c, mask=c_mask)
+
+        tt.return_(srcs=[])
+
+    matmul_kernel_2.emit()
+    assert ctx.module.operation.verify()
+    triton_mod = unwrap_c_module_op(ctx.module.operation)
+
+    props = hip.hipDeviceProp_t()
+    hip_check(hip.hipGetDeviceProperties(props, 0))
+    arch = props.gcnArchName.decode()
+    options = backend.parse_options({"arch": arch, "waves_per_eu": 8})
+
+    hsaco, metadata = backend.compile(
+        triton_mod,
+        options=options,
+        dump_ir=True,
+        ir_dump_dir=Path(__file__).parent / "matmul_kernel_2",
+    )
+
+    module = hip_check(hip.hipModuleLoadData(hsaco))
+    function = hip_check(
+        hip.hipModuleGetFunction(module, metadata["name"].encode())
+    ).as_c_void_p()
+
+    # kernel launch
+
+    M, K, N = 16, 16, 16
+    a_h = np.random.rand(M, K).astype(dtype=np.float32)
+    b_h = np.random.rand(K, N).astype(dtype=np.float32)
+    c_h = -3 * np.ones((M, N), dtype=np.float32)
+
+    a_num_bytes = a_h.size * a_h.itemsize
+    b_num_bytes = b_h.size * b_h.itemsize
+    c_num_bytes = c_h.size * c_h.itemsize
+
+    a_d = hip_check(hip.hipMalloc(a_num_bytes)).configure(
+        typestr="float32", shape=(M, K)
+    )
+    b_d = hip_check(hip.hipMalloc(b_num_bytes)).configure(
+        typestr="float32", shape=(K, N)
+    )
+    c_d = hip_check(hip.hipMalloc(c_num_bytes)).configure(
+        typestr="float32", shape=(M, N)
+    )
+
+    hip_check(
+        hip.hipMemcpy(a_d, a_h, a_num_bytes, hip.hipMemcpyKind.hipMemcpyHostToDevice)
+    )
+    hip_check(
+        hip.hipMemcpy(b_d, b_h, b_num_bytes, hip.hipMemcpyKind.hipMemcpyHostToDevice)
+    )
+    hip_check(
+        hip.hipMemcpy(c_d, c_h, c_num_bytes, hip.hipMemcpyKind.hipMemcpyHostToDevice)
+    )
+
+    stream = 0
+    gridX = math.ceil(M / BLOCK_SIZE_M) * math.ceil(N / BLOCK_SIZE_N)
+    gridY = 1
+    gridZ = 1
+    num_warps = options.num_warps
+    shared_memory = metadata["shared"]
+
+    launch(
+        function,
+        gridX,
+        gridY,
+        gridZ,
+        stream,
+        options.warp_size,
+        num_warps,
+        shared_memory,
+        a_d,
+        b_d,
+        c_d,
+        M,
+        N,
+        K,
+        *(np.array(a_h.strides) // a_h.itemsize).tolist(),
+        *(np.array(b_h.strides) // b_h.itemsize).tolist(),
+        *(np.array(c_h.strides) // c_h.itemsize).tolist(),
     )
 
     hip_check(
@@ -621,3 +845,5 @@ if __name__ == "__main__":
         test_compile(ctx)
     with mlir_mod_ctx(allow_unregistered_dialects=True) as ctx:
         test_run(ctx)
+    with mlir_mod_ctx(allow_unregistered_dialects=True) as ctx:
+        test_inline_mod(ctx)
