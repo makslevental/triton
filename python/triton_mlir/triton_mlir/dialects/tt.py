@@ -83,7 +83,7 @@ def zeros(shape: Sequence[int], dtype: Optional[Type] = None):
 _broadcast = broadcast
 
 
-def broadcast(shape: list[int], src: Tensor, *, loc=None, ip=None):
+def broadcast(src: Tensor, shape: list[int], *, loc=None, ip=None):
     if loc is None:
         loc = get_user_code_loc()
     return _broadcast(RankedTensorType.get(shape, src.dtype), src, loc=loc, ip=ip)
@@ -129,9 +129,9 @@ def broadcast_binary(lhs: Tensor, rhs: Tensor) -> tuple[Tensor, Tensor]:
                 "at index " + str(i) + ": " + str(left) + " and " + str(right)
             )
     if lhs_shape != ret_shape:
-        lhs = broadcast(ret_shape, lhs)
+        lhs = broadcast(lhs, ret_shape)
     if rhs_shape != ret_shape:
-        rhs = broadcast(ret_shape, rhs)
+        rhs = broadcast(rhs, ret_shape)
     return lhs, rhs
 
 
@@ -181,9 +181,9 @@ def load(
         if isinstance(other, Scalar):
             other = splat(other, ptr.shape)
         if ptr.shape != other.shape:
-            other = broadcast(ptr.shape, other, loc=loc, ip=ip)
+            other = broadcast(other, ptr.shape, loc=loc, ip=ip)
     if ptr.shape != mask.shape:
-        mask = broadcast(ptr.shape, mask, loc=loc, ip=ip)
+        mask = broadcast(mask, ptr.shape, loc=loc, ip=ip)
 
     return _load(
         ptr,
@@ -216,7 +216,7 @@ def store(
     if loc is None:
         loc = get_user_code_loc()
     if ptr.shape != value.shape:
-        ptr = broadcast(value.shape, ptr, loc=loc, ip=ip)
+        ptr = broadcast(ptr, value.shape, loc=loc, ip=ip)
     return _store(
         ptr,
         value,
