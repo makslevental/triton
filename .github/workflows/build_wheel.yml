@@ -24,10 +24,10 @@ jobs:
       fail-fast: false
       matrix:
         runs-on: ["ubuntu-22.04", "macos-14", "macos-13"]
-        python-version: ["3.10", "3.11", "3.12"]
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
         include: [
-          # {runs-on: "ubuntu-22.04", name: "manylinux_x86_64", os: "almalinux", arch: x86_64, container: "quay.io/pypa/manylinux_2_28_x86_64"},
-          {runs-on: "ubuntu-22.04", name: "ubuntu_x86_64", os: "ubuntu", arch: x86_64},
+          # {runs-on: "ubuntu-22.04", name: "ubuntu_x86_64", os: "ubuntu", arch: x86_64},
+          {runs-on: "ubuntu-22.04", name: "manylinux_x86_64", os: "almalinux", arch: "x86_64", container: "quay.io/pypa/manylinux_2_28_x86_64"},
           {runs-on: "macos-14", name: "macos_arm64", os: "macos", arch: arm64},
           {runs-on: "macos-13", name: "macos_x86_64", os: "macos", arch: x86_64},
         ]
@@ -39,7 +39,7 @@ jobs:
 
     runs-on: ${{ matrix.runs-on }}
 
-    name: "${{ matrix.name }} ${{ matrix.python-version }}"
+    name: "Build ${{ matrix.name }} ${{ matrix.python-version }}"
 
     defaults:
       run:
@@ -83,27 +83,12 @@ jobs:
           
           export TRITON_SRC_DIR="$PWD"
           
-          pip -q download circt -f https://github.com/makslevental/circt/releases/expanded_assets/latest --no-deps
+          $python3_command -m pip -q download circt -f https://github.com/makslevental/circt/releases/expanded_assets/latest --no-deps
           unzip -q circt*whl -d circt-install
           export CMAKE_PREFIX_PATH="$PWD/circt-install"
           
           ccache -z
-          
-          if [[ "${{ matrix.os }}" == "ubuntu" ]] || [[ "${{ matrix.os }}" == "almalinux" ]]; then
-            export CMAKE_EXE_LINKER_FLAGS_INIT="-fuse-ld=lld-18"
-            export CMAKE_SHARED_LINKER_FLAGS_INIT="-fuse-ld=lld-18"
-            export CMAKE_MODULE_LINKER_FLAGS_INIT="-fuse-ld=lld-18"
-          fi
-          
-          # don't build a fat binary
-          if [[ "${{ matrix.os }}" == "macos" ]]; then
-            export CMAKE_MODULE_LINKER_FLAGS="-Wl,-U -Wl,_PyClassMethod_New"
-            export CMAKE_OSX_ARCHITECTURES="${{ matrix.arch }}"
-            # prevent universal wheels from being built for macos
-            _PYTHON_HOST_PLATFORM=$($python3_command -c "import sysconfig; print(sysconfig.get_platform())")
-            export _PYTHON_HOST_PLATFORM=$(echo $_PYTHON_HOST_PLATFORM | sed 's/universal2/${{ matrix.arch }}/g')
-          fi
-          
+
           pushd "$TRITON_SRC_DIR/python/triton_mlir"
           
           $python3_command -m pip install pip-tools poetry
@@ -111,6 +96,10 @@ jobs:
           $python3_command -m pip install -r ./build-reqs.txt
           
           $python3_command -m pip wheel . -w "$TRITON_SRC_DIR/wheelhouse" -v --no-build-isolation
+          if [[ "${{ matrix.os }}" == "almalinux" ]]; then
+            $python3_command -m pip install auditwheel 
+            $python3_command -m auditwheel repair $TRITON_SRC_DIR/wheelhouse/triton_mlir-*.whl -w $TRITON_SRC_DIR/wheelhouse
+          fi
           
           ccache -s
           
@@ -121,7 +110,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: triton_mlir_${{ matrix.name }}_${{ matrix.python-version }}_artifact
-          path: wheelhouse
+          path: wheelhouse/triton_mlir*whl
           if-no-files-found: warn
 
       - name: "Save cache"
@@ -139,10 +128,10 @@ jobs:
       fail-fast: false
       matrix:
         runs-on: ["ubuntu-22.04", "macos-14", "macos-13"]
-        python-version: ["3.10", "3.11", "3.12"]
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
         include: [
-          # {runs-on: "ubuntu-22.04", name: "manylinux_x86_64", os: "almalinux", arch: x86_64, container: "quay.io/pypa/manylinux_2_28_x86_64"},
-          {runs-on: "ubuntu-22.04", name: "ubuntu_x86_64", os: "ubuntu", arch: x86_64},
+          # {runs-on: "ubuntu-22.04", name: "ubuntu_x86_64", os: "ubuntu", arch: x86_64},
+          {runs-on: "ubuntu-22.04", name: "manylinux_x86_64", os: "almalinux", arch: "x86_64", container: "quay.io/pypa/manylinux_2_28_x86_64"},
           {runs-on: "macos-14", name: "macos_arm64", os: "macos", arch: arm64},
           {runs-on: "macos-13", name: "macos_x86_64", os: "macos", arch: x86_64},
         ]
@@ -154,11 +143,14 @@ jobs:
 
     runs-on: ${{ matrix.runs-on }}
 
-    name: "${{ matrix.name }} ${{ matrix.python-version }}"
+    name: "Test ${{ matrix.name }} ${{ matrix.python-version }}"
 
     defaults:
       run:
         shell: bash
+
+    container:
+      image: ${{ matrix.container }}
 
     steps:
 
@@ -176,18 +168,34 @@ jobs:
 
       - name: "Install Python"
         uses: actions/setup-python@v4
+        if: ${{ startsWith(matrix.os, 'macos') || startsWith(matrix.os, 'windows') || startsWith(matrix.os, 'ubuntu') }}
         with:
           python-version: ${{ matrix.python-version }}
+
+      - name: "Python deps"
+        shell: bash
+        run: |
+          set -x 
+          
+          python3_command=""
+          if (command -v python${{ matrix.python-version }} &> /dev/null); then
+            python3_command="python${{ matrix.python-version }}"
+          elif (command -v python3 &> /dev/null); then
+            python3_command="python3"
+          elif (command -v python &> /dev/null); then
+            python3_command="python"
+          fi 
+          echo "python3_command=$python3_command" >> $GITHUB_ENV
 
       - name: "Test"
         run: |
           
-          pip install pytest mlir-native-tools
+          $python3_command -m pip install pytest mlir-native-tools
           if [[ "${{ matrix.os }}" == "ubuntu" ]] || [[ "${{ matrix.os }}" == "almalinux" ]]; then
-            pip install hip-python --extra-index-url https://test.pypi.org/simple
+            $python3_command -m pip install hip-python --extra-index-url https://test.pypi.org/simple
           fi
-          pip install triton-mlir -f $PWD/wheelhouse
-          pytest -s python/triton_mlir/test
+          $python3_command -m pip install triton-mlir -f $PWD/wheelhouse
+          $python3_command - m pytest -s python/triton_mlir/test
 
   release:
 
