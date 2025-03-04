@@ -1,4 +1,5 @@
 import warnings
+
 # becomes namespace package
 from pkgutil import extend_path
 
@@ -29,8 +30,12 @@ class MyMetaFinder(MetaPathFinder):
                 importlib.util.module_from_spec(spec)
                 return spec
             except ImportError as e:
-                warnings.warn(e.msg)
-
+                if "PyInit__mlirRegisterEverything" in e.msg:
+                    pass
+                elif "PyInit__site_initialize_1" in e.msg:
+                    pass
+                else:
+                    warnings.warn(e.msg)
 
         return None
 
