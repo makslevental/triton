@@ -74,7 +74,7 @@ runs:
       run: |
         if [[ "${{ inputs.os }}" == "almalinux" ]]; then
           dnf install -y epel-release 
-          dnf install -y sudo ncurses-compat-libs tmate python3-pip git
+          dnf install -y sudo ncurses-compat-libs tmate python3-pip git wget npm
           # install ccache
           curl -sLO https://github.com/ccache/ccache/releases/download/v4.10.2/ccache-4.10.2-linux-x86_64.tar.xz
           tar -xf ccache-4.10.2-linux-x86_64.tar.xz
@@ -151,3 +151,15 @@ runs:
         echo "CMAKE_C_COMPILER_LAUNCHER=ccache" >> $GITHUB_ENV
         echo "CMAKE_CXX_COMPILER_LAUNCHER=ccache" >> $GITHUB_ENV
         echo "Python3_EXECUTABLE=$(which $python3_command)" >> $GITHUB_ENV
+        
+        if [[ "${{ inputs.os }}" == "ubuntu" ]]; then
+          echo "CMAKE_EXE_LINKER_FLAGS_INIT=-fuse-ld=lld-18" >> $GITHUB_ENV
+          echo "CMAKE_SHARED_LINKER_FLAGS_INIT=-fuse-ld=lld-18" >> $GITHUB_ENV
+          echo "CMAKE_MODULE_LINKER_FLAGS_INIT=-fuse-ld=lld-18" >> $GITHUB_ENV
+        fi
+        
+        if [[ "${{ inputs.os }}" == "macos" ]]; then
+          # prevent fat universal wheels from being built for macos and use platform 11.0
+          echo "MACOSX_DEPLOYMENT_TARGET=11.0" >> $GITHUB_ENV
+          echo "_PYTHON_HOST_PLATFORM=macosx-11.0-${{ inputs.arch }}" >> $GITHUB_ENV
+        fi
