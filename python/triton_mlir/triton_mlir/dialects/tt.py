@@ -249,8 +249,9 @@ def dot(
     if c is None:
         c = constant(0, type=a.dtype)
     if isinstance(c, Scalar):
-        assert a.has_static_shape()
-        c = splat(c, a.shape)
+        assert len(a.type.shape) == len(b.type.shape) == 2
+        assert a.type.has_static_shape and b.type.has_static_shape
+        c = splat(c, (a.type.shape[0], b.type.shape[1]))
 
     return _dot(
         a,

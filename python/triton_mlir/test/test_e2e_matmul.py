@@ -15,7 +15,7 @@ from triton_mlir.compiler import (
     llvm,
     GPUTarget,
 )
-from triton_mlir.dialects import tt, scf, llvm, builtin
+from triton_mlir.dialects import tt, scf, llvm, builtin, ttpp
 from triton_mlir.dialects.arith import IntegerOverflowFlags
 
 # noinspection PyUnresolvedReferences
@@ -341,10 +341,6 @@ def print_prolog():
 
 
 EPILOG = """
-# cdiv__i32___1__cconstexpr_32_.emit()
-# cdiv__i32___1__cconstexpr_64_.emit()
-# zeros_____0_0_cconstexpr_64___0_1_cconstexpr_64___1__cconstexpr_fp32_.emit()
-
 matmul_kernel.emit()
 ctx.module.operation.verify()
 
@@ -388,10 +384,9 @@ def test_round_trip(ctx):
         mod.operation.walk(generic_print_walk_callback, WalkOrder.PRE_ORDER)
         print_epilog()
 
-    # noinspection PyUnresolvedReferences
     import e2e_matmul
 
-    assert str(e2e_matmul.ctx.module).strip() == matmul_src.strip()
+    assert str(e2e_matmul.mod_str()).strip() == matmul_src.strip()
 
 
 @pytest.mark.parametrize("arch", ["gfx1100"])
@@ -746,18 +741,9 @@ def test_inline_mod(ctx, backend, autotune_config):
         a_ptr_incr = splat(stride_ak * BS_K, (BS_M, BS_K))
         b_ptr_incr = splat(stride_bk * BS_K, (BS_K, BS_N))
 
-        accum = arith.constant(
-            np.full([BS_M, BS_N], 0.0, np.float32),
-            T.tensor(BS_M, BS_N, T.f32),
-        )
-        cst_0 = arith.constant(
-            np.full([BS_K, BS_N], 0.0, np.float32),
-            T.tensor(BS_K, BS_N, T.f32),
-        )
-        cst_1 = arith.constant(
-            np.full([BS_M, BS_K], 0.0, np.float32),
-            T.tensor(BS_M, BS_K, T.f32),
-        )
+        accum = arith.constant(np.full([BS_M, BS_N], 0.0, np.float32))
+        cst_0 = arith.constant(np.full([BS_K, BS_N], 0.0, np.float32))
+        cst_1 = arith.constant(np.full([BS_M, BS_K], 0.0, np.float32))
         stop = arith.ceildivsi(K, BS_K_)
         for k, [accum, a_ptrs, b_ptrs], _ in scf.range_(
             0, stop, 1, iter_args=[accum, a_ptrs, b_ptrs]
@@ -887,6 +873,174 @@ def test_inline_mod(ctx, backend, autotune_config):
     assert np.allclose(c_h, correct)
 
 
+@pytest.mark.skipif(hip_bindings_not_installed(), reason="hip not installed")
+@pytest.mark.parametrize("autotune_config", autotune_configs)
+def test_inline_mod_ttpp(ctx, backend, autotune_config):
+    from hip import hip
+
+    M, K, N = 512, 512, 512
+    BLOCK_SIZE_M = autotune_config["BLOCK_SIZE_M"]
+    BLOCK_SIZE_N = autotune_config["BLOCK_SIZE_N"]
+    BLOCK_SIZE_K = autotune_config["BLOCK_SIZE_K"]
+    GROUP_SIZE_M = autotune_config["GROUP_SIZE_M"]
+    WAVES_PER_EU = autotune_config["WAVES_PER_EU"]
+    NUM_WARPS = autotune_config["NUM_WARPS"]
+
+    @tt.jit(
+        arg_attrs=ArrayAttr.parse(
+            "[{tt.divisibility = 16 : i32, tt.pointer_range = 32 : i32}, {tt.divisibility = 16 : i32, tt.pointer_range = 32 : i32}, {tt.divisibility = 16 : i32, tt.pointer_range = 32 : i32}, {}, {}, {}, {}, {}, {}, {}, {}, {}]"
+        ),
+        noinline=False,
+        sym_name="matmul_kernel_3",
+        sym_visibility="public",
+    )
+    def matmul_kernel_3(
+        a_ptr: +T.f32,
+        b_ptr: +T.f32,
+        c_ptr: +T.f32,
+        M: T.i32,
+        N: T.i32,
+        K: T.i32,
+        stride_am: T.i32,
+        stride_ak: T.i32,
+        stride_bk: T.i32,
+        stride_bn: T.i32,
+        stride_cm: T.i32,
+        stride_cn: T.i32,
+    ):
+        BLOCK_SIZE_M_ = arith.constant(BLOCK_SIZE_M, T.i32)
+        BLOCK_SIZE_N_ = arith.constant(BLOCK_SIZE_N, T.i32)
+        BLOCK_SIZE_K_ = arith.constant(BLOCK_SIZE_K, T.i32)
+        GROUP_SIZE_M_ = arith.constant(GROUP_SIZE_M, T.i32)
+
+        pid = get_program_id(axis=0)
+
+        num_pid_m = arith.ceildivsi(M, BLOCK_SIZE_M_)
+        num_pid_n = arith.ceildivsi(N, BLOCK_SIZE_N_)
+        num_pid_in_group = GROUP_SIZE_M * num_pid_n
+        group_id = pid // num_pid_in_group
+        first_pid_m = group_id * GROUP_SIZE_M
+        group_size_m = arith.minsi(num_pid_m - first_pid_m, GROUP_SIZE_M_)
+        pid_m = first_pid_m + ((pid % num_pid_in_group) % group_size_m)
+        pid_n = (pid % num_pid_in_group) // group_size_m
+
+        offs_am = (pid_m * BLOCK_SIZE_M + make_range(0, BLOCK_SIZE_M)) % M
+        offs_bn = (pid_n * BLOCK_SIZE_N + make_range(0, BLOCK_SIZE_N)) % N
+        offs_k = make_range(0, BLOCK_SIZE_K)
+        a_ptrs = a_ptr + (offs_am[:, None] * stride_am + offs_k[None, :] * stride_ak)
+        b_ptrs = b_ptr + (offs_k[:, None] * stride_bk + offs_bn[None, :] * stride_bn)
+
+        accum = arith.constant(np.full([BLOCK_SIZE_M, BLOCK_SIZE_N], 0.0, np.float32))
+        stop = arith.ceildivsi(K, BLOCK_SIZE_K_)
+        for k, [accum, a_ptrs, b_ptrs], _ in scf.range_(
+            0, stop, 1, iter_args=[accum, a_ptrs, b_ptrs]
+        ):
+            a = load(a_ptrs, mask=offs_k[None, :] < K - k * BLOCK_SIZE_K, other=0.0)
+            b = load(b_ptrs, mask=offs_k[:, None] < K - k * BLOCK_SIZE_K, other=0.0)
+            accum += dot(a, b)
+            a_ptrs += BLOCK_SIZE_K * stride_ak
+            b_ptrs += BLOCK_SIZE_K * stride_bk
+            accum, *_ = scf.yield_(accum, a_ptrs, b_ptrs)
+
+        c = accum
+
+        offs_cm = pid_m * BLOCK_SIZE_M + make_range(0, BLOCK_SIZE_M)
+        offs_cn = pid_n * BLOCK_SIZE_N + make_range(0, BLOCK_SIZE_N)
+        c_ptrs = c_ptr + stride_cm * offs_cm[:, None] + stride_cn * offs_cn[None, :]
+        c_mask = (offs_cm[:, None] < M) & (offs_cn[None, :] < N)
+        store(c_ptrs, c, mask=c_mask)
+
+        tt.return_(srcs=[])
+
+    matmul_kernel_3.emit()
+    assert ctx.module.operation.verify()
+    triton_mod = unwrap_c_module_op(ctx.module.operation)
+
+    props = hip.hipDeviceProp_t()
+    hip_check(hip.hipGetDeviceProperties(props, 0))
+    arch = props.gcnArchName.decode()
+    options = backend.parse_options(
+        {"arch": arch, "waves_per_eu": WAVES_PER_EU, "num_warps": NUM_WARPS}
+    )
+
+    hsaco, metadata = backend.compile(
+        triton_mod,
+        options=options,
+        dump_ir=True,
+        ir_dump_dir=Path(__file__).parent
+        / f"matmul_kernel_3_group_size_{GROUP_SIZE_M}",
+    )
+
+    module = hip_check(hip.hipModuleLoadData(hsaco))
+    function = hip_check(
+        hip.hipModuleGetFunction(module, metadata["name"].encode())
+    ).as_c_void_p()
+
+    # kernel launch
+
+    a_h = np.random.rand(M, K).astype(dtype=np.float32)
+    b_h = np.random.rand(K, N).astype(dtype=np.float32)
+    c_h = -3 * np.ones((M, N), dtype=np.float32)
+
+    a_num_bytes = a_h.size * a_h.itemsize
+    b_num_bytes = b_h.size * b_h.itemsize
+    c_num_bytes = c_h.size * c_h.itemsize
+
+    a_d = hip_check(hip.hipMalloc(a_num_bytes)).configure(
+        typestr="float32", shape=(M, K)
+    )
+    b_d = hip_check(hip.hipMalloc(b_num_bytes)).configure(
+        typestr="float32", shape=(K, N)
+    )
+    c_d = hip_check(hip.hipMalloc(c_num_bytes)).configure(
+        typestr="float32", shape=(M, N)
+    )
+
+    hip_check(
+        hip.hipMemcpy(a_d, a_h, a_num_bytes, hip.hipMemcpyKind.hipMemcpyHostToDevice)
+    )
+    hip_check(
+        hip.hipMemcpy(b_d, b_h, b_num_bytes, hip.hipMemcpyKind.hipMemcpyHostToDevice)
+    )
+    hip_check(
+        hip.hipMemcpy(c_d, c_h, c_num_bytes, hip.hipMemcpyKind.hipMemcpyHostToDevice)
+    )
+
+    stream = 0
+    gridX = math.ceil(M / BLOCK_SIZE_M) * math.ceil(N / BLOCK_SIZE_N)
+    gridY = 1
+    gridZ = 1
+    shared_memory = metadata["shared"]
+
+    launch(
+        function,
+        gridX,
+        gridY,
+        gridZ,
+        stream,
+        options.warp_size,
+        options.num_warps,
+        shared_memory,
+        a_d,
+        b_d,
+        c_d,
+        M,
+        N,
+        K,
+        *(np.array(a_h.strides) // a_h.itemsize).tolist(),
+        *(np.array(b_h.strides) // b_h.itemsize).tolist(),
+        *(np.array(c_h.strides) // c_h.itemsize).tolist(),
+    )
+
+    correct = a_h @ b_h
+    assert np.allclose(c_h, -3.0)
+    assert not np.allclose(correct, c_h)
+    hip_check(
+        hip.hipMemcpy(c_h, c_d, c_num_bytes, hip.hipMemcpyKind.hipMemcpyDeviceToHost)
+    )
+    assert np.allclose(c_h, correct)
+
+
 if __name__ == "__main__":
     with mlir_mod_ctx(allow_unregistered_dialects=True) as ctx:
         test_smoke(ctx)
@@ -898,3 +1052,5 @@ if __name__ == "__main__":
         test_run(ctx)
     with mlir_mod_ctx(allow_unregistered_dialects=True) as ctx:
         test_inline_mod(ctx)
+    with mlir_mod_ctx(allow_unregistered_dialects=True) as ctx:
+        test_inline_mod_ttpp(ctx)
