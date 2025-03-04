@@ -8,7 +8,37 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from triton_mlir.compiler import (
+    HIPBackend,
+    unwrap_c_module_op,
+    tritonir,
+    llvm,
+    GPUTarget,
+)
+from triton_mlir.dialects import tt, scf, llvm, builtin
+from triton_mlir.dialects.arith import IntegerOverflowFlags
+
+# noinspection PyUnresolvedReferences
+from triton_mlir.dialects.tt import (
+    PointerType,
+    broadcast,
+    splat,
+    load,
+    dot,
+    addptr,
+    expand_dims,
+    store,
+    get_program_id,
+    make_range,
+)
 from triton_mlir.extras.context import mlir_mod_ctx
+
+# this needs to be below the triton_mlir_bindings
+from triton_mlir.extras.dialects.ext import arith
+from triton_mlir.extras.dialects.ext import scf
+
+# noinspection PyUnresolvedReferences
+from triton_mlir.extras.testing import mlir_ctx as ctx, filecheck, MLIRContext
 from triton_mlir.extras.util import mlir_type_to_np_dtype
 from triton_mlir.ir import (
     Module,
@@ -35,38 +65,7 @@ from triton_mlir.ir import (
     F16Type,
     F64Type,
 )
-
-# this needs to be below the triton_mlir_bindings
-from triton_mlir.extras.dialects.ext import arith
-from triton_mlir.dialects.arith import IntegerOverflowFlags
-
-# noinspection PyUnresolvedReferences
-from triton_mlir.extras.testing import mlir_ctx as ctx, filecheck, MLIRContext
-
-from triton_mlir.dialects import tt, scf, llvm, builtin
 from triton_mlir.types import T
-from triton_mlir.compiler import (
-    HIPBackend,
-    unwrap_c_module_op,
-    tritonir,
-    llvm,
-    GPUTarget,
-)
-
-# noinspection PyUnresolvedReferences
-from triton_mlir.dialects.tt import (
-    PointerType,
-    broadcast,
-    splat,
-    load,
-    dot,
-    addptr,
-    expand_dims,
-    store,
-    get_program_id,
-    make_range,
-)
-from triton_mlir.extras.dialects.ext import scf
 
 from util import hip_bindings_not_installed, hip_check, backend
 
@@ -679,10 +678,10 @@ def test_inline_mod(ctx, backend, autotune_config):
     from hip import hip
 
     M, K, N = 512, 512, 512
-    BLOCK_SIZE_M = autotune_config["BLOCK_SIZE_M"]
-    BLOCK_SIZE_N = autotune_config["BLOCK_SIZE_N"]
-    BLOCK_SIZE_K = autotune_config["BLOCK_SIZE_K"]
-    GROUP_SIZE_M = autotune_config["GROUP_SIZE_M"]
+    BS_M = autotune_config["BLOCK_SIZE_M"]
+    BS_N = autotune_config["BLOCK_SIZE_N"]
+    BS_K = autotune_config["BLOCK_SIZE_K"]
+    GS_M = autotune_config["GROUP_SIZE_M"]
     WAVES_PER_EU = autotune_config["WAVES_PER_EU"]
     NUM_WARPS = autotune_config["NUM_WARPS"]
 
@@ -708,82 +707,70 @@ def test_inline_mod(ctx, backend, autotune_config):
         stride_cm: T.i32,
         stride_cn: T.i32,
     ):
-        c0_i32 = arith.constant(0, T.i32)
-        c1_i32 = arith.constant(1, T.i32)
-        BLOCK_SIZE_M_ = arith.constant(BLOCK_SIZE_M, T.i32)
-        BLOCK_SIZE_N_ = arith.constant(BLOCK_SIZE_N, T.i32)
-        BLOCK_SIZE_K_ = arith.constant(BLOCK_SIZE_K, T.i32)
-        GROUP_SIZE_M_ = arith.constant(GROUP_SIZE_M, T.i32)
+        BS_M_ = arith.constant(BS_M, T.i32)
+        BS_N_ = arith.constant(BS_N, T.i32)
+        BS_K_ = arith.constant(BS_K, T.i32)
+        GS_M_ = arith.constant(GS_M, T.i32)
 
         pid = get_program_id(axis=0)
 
-        num_pid_m = arith.ceildivsi(M, BLOCK_SIZE_M_)
-        num_pid_n = arith.ceildivsi(N, BLOCK_SIZE_N_)
-        num_pid_in_group = GROUP_SIZE_M * num_pid_n
+        num_pid_m = arith.ceildivsi(M, BS_M_)
+        num_pid_n = arith.ceildivsi(N, BS_N_)
+        num_pid_in_group = GS_M * num_pid_n
         group_id = pid // num_pid_in_group
-        first_pid_m = group_id * GROUP_SIZE_M
-        group_size_m = arith.minsi(num_pid_m - first_pid_m, GROUP_SIZE_M_)
+        first_pid_m = group_id * GS_M
+        group_size_m = arith.minsi(num_pid_m - first_pid_m, GS_M_)
         pid_m = first_pid_m + ((pid % num_pid_in_group) % group_size_m)
         pid_n = (pid % num_pid_in_group) // group_size_m
 
-        v15 = splat(pid_m * BLOCK_SIZE_M, (BLOCK_SIZE_M,)) + make_range(
-            start=0, end=BLOCK_SIZE_M
-        )
-        offs_am = v15 % splat(M, (BLOCK_SIZE_M,))
+        v15 = splat(pid_m * BS_M, (BS_M,)) + make_range(start=0, end=BS_M)
+        offs_am = v15 % splat(M, (BS_M,))
 
-        v20 = splat(pid_n * BLOCK_SIZE_N, (BLOCK_SIZE_N,)) + make_range(
-            start=0, end=BLOCK_SIZE_N
-        )
-        offs_bn = v20 % splat(N, (BLOCK_SIZE_N,))
+        v20 = splat(pid_n * BS_N, (BS_N,)) + make_range(start=0, end=BS_N)
+        offs_bn = v20 % splat(N, (BS_N,))
 
-        offs_k = make_range(start=0, end=BLOCK_SIZE_K)
+        offs_k = make_range(start=0, end=BS_K)
 
-        v26 = expand_dims(offs_am, axis=1) * splat(stride_am, (BLOCK_SIZE_M, 1))
-        v27 = expand_dims(offs_k, axis=0)
-        v29 = v27 * splat(stride_ak, (1, BLOCK_SIZE_K))
-        v30 = broadcast(v26, (BLOCK_SIZE_M, BLOCK_SIZE_K))
-        v31 = broadcast(v29, (BLOCK_SIZE_M, BLOCK_SIZE_K))
-        v32 = v30 + v31
-        v33 = splat(a_ptr, (BLOCK_SIZE_M, BLOCK_SIZE_K))
+        v26 = expand_dims(offs_am, axis=1) * splat(stride_am, (BS_M, 1))
+        v29 = expand_dims(offs_k, axis=0) * splat(stride_ak, (1, BS_K))
+        v32 = broadcast(v26, (BS_M, BS_K)) + broadcast(v29, (BS_M, BS_K))
+        v33 = splat(a_ptr, (BS_M, BS_K))
         a_ptrs = addptr(v33, offset=v32)
 
-        v35 = expand_dims(offs_k, axis=1)
-        v37 = v35 * splat(stride_bk, (BLOCK_SIZE_K, 1))
-        v40 = expand_dims(offs_bn, axis=0) * splat(stride_bn, (1, BLOCK_SIZE_N))
-        v41 = broadcast(v37, (BLOCK_SIZE_K, BLOCK_SIZE_N))
-        v42 = broadcast(v40, (BLOCK_SIZE_K, BLOCK_SIZE_N))
-        v43 = v41 + v42
-        v44 = splat(b_ptr, (BLOCK_SIZE_K, BLOCK_SIZE_N))
+        v37 = expand_dims(offs_k, axis=1) * splat(stride_bk, (BS_K, 1))
+        v40 = expand_dims(offs_bn, axis=0) * splat(stride_bn, (1, BS_N))
+        v43 = broadcast(v37, (BS_K, BS_N)) + broadcast(v40, (BS_K, BS_N))
+        v44 = splat(b_ptr, (BS_K, BS_N))
         b_ptrs = addptr(v44, offset=v43)
 
-        a_ptr_incr = splat(stride_ak * BLOCK_SIZE_K, (BLOCK_SIZE_M, BLOCK_SIZE_K))
-        b_ptr_incr = splat(stride_bk * BLOCK_SIZE_K, (BLOCK_SIZE_K, BLOCK_SIZE_N))
+        a_ptr_incr = splat(stride_ak * BS_K, (BS_M, BS_K))
+        b_ptr_incr = splat(stride_bk * BS_K, (BS_K, BS_N))
 
         accum = arith.constant(
-            np.full([BLOCK_SIZE_M, BLOCK_SIZE_N], 0.0, np.float32),
-            T.tensor(BLOCK_SIZE_M, BLOCK_SIZE_N, T.f32),
+            np.full([BS_M, BS_N], 0.0, np.float32),
+            T.tensor(BS_M, BS_N, T.f32),
         )
         cst_0 = arith.constant(
-            np.full([BLOCK_SIZE_K, BLOCK_SIZE_N], 0.0, np.float32),
-            T.tensor(BLOCK_SIZE_K, BLOCK_SIZE_N, T.f32),
+            np.full([BS_K, BS_N], 0.0, np.float32),
+            T.tensor(BS_K, BS_N, T.f32),
         )
         cst_1 = arith.constant(
-            np.full([BLOCK_SIZE_M, BLOCK_SIZE_K], 0.0, np.float32),
-            T.tensor(BLOCK_SIZE_M, BLOCK_SIZE_K, T.f32),
+            np.full([BS_M, BS_K], 0.0, np.float32),
+            T.tensor(BS_M, BS_K, T.f32),
         )
-        stop = arith.ceildivsi(K, BLOCK_SIZE_K_)
+        stop = arith.ceildivsi(K, BS_K_)
         for k, [accum, a_ptrs, b_ptrs], _ in scf.range_(
             0, stop, 1, iter_args=[accum, a_ptrs, b_ptrs]
         ):
-            v72 = K - k * BLOCK_SIZE_K
-
             a_mask = broadcast(
-                v27 < splat(v72, (1, BLOCK_SIZE_K)), (BLOCK_SIZE_M, BLOCK_SIZE_K)
+                expand_dims(offs_k, axis=0) < splat(K - k * BS_K, (1, BS_K)),
+                (BS_M, BS_K),
             )
             a = load(a_ptrs, mask=a_mask, other=cst_1)
 
             b_mask = broadcast(
-                v35 < splat(v72, (BLOCK_SIZE_K, 1)), (BLOCK_SIZE_K, BLOCK_SIZE_N)
+                expand_dims(offs_k, axis=1) < splat(K - k * BS_K, (BS_K, 1)),
+                (BS_K, BS_N),
             )
             b = load(b_ptrs, mask=b_mask, other=cst_0)
 
@@ -796,20 +783,16 @@ def test_inline_mod(ctx, backend, autotune_config):
 
         offs_cm = expand_dims(v15, axis=1)
 
-        c_ptr = splat(c_ptr, (BLOCK_SIZE_M, 1))
-        c_ptr = addptr(c_ptr, offset=splat(stride_cm, (BLOCK_SIZE_M, 1)) * offs_cm)
-        c_ptr = broadcast(c_ptr, (BLOCK_SIZE_M, BLOCK_SIZE_N))
+        c_ptr = splat(c_ptr, (BS_M, 1))
+        c_ptr = addptr(c_ptr, offset=splat(stride_cm, (BS_M, 1)) * offs_cm)
+        c_ptr = broadcast(c_ptr, (BS_M, BS_N))
 
         offs_cn = expand_dims(v20, axis=0)
-        v60 = splat(stride_cn, (1, BLOCK_SIZE_N)) * offs_cn
-        c_ptrs = addptr(c_ptr, offset=broadcast(v60, (BLOCK_SIZE_M, BLOCK_SIZE_N)))
+        v60 = splat(stride_cn, (1, BS_N)) * offs_cn
+        c_ptrs = addptr(c_ptr, offset=broadcast(v60, (BS_M, BS_N)))
 
-        v68 = broadcast(
-            offs_cm < splat(M, (BLOCK_SIZE_M, 1)), (BLOCK_SIZE_M, BLOCK_SIZE_N)
-        )
-        v69 = broadcast(
-            offs_cn < splat(N, (1, BLOCK_SIZE_N)), (BLOCK_SIZE_M, BLOCK_SIZE_N)
-        )
+        v68 = broadcast(offs_cm < splat(M, (BS_M, 1)), (BS_M, BS_N))
+        v69 = broadcast(offs_cn < splat(N, (1, BS_N)), (BS_M, BS_N))
         c_mask = v68 & v69
 
         store(c_ptrs, value=c, mask=c_mask)
@@ -831,8 +814,7 @@ def test_inline_mod(ctx, backend, autotune_config):
         triton_mod,
         options=options,
         dump_ir=True,
-        ir_dump_dir=Path(__file__).parent
-        / f"matmul_kernel_2_group_size_{GROUP_SIZE_M}",
+        ir_dump_dir=Path(__file__).parent / f"matmul_kernel_2_group_size_{GS_M}",
     )
 
     module = hip_check(hip.hipModuleLoadData(hsaco))
@@ -871,7 +853,7 @@ def test_inline_mod(ctx, backend, autotune_config):
     )
 
     stream = 0
-    gridX = math.ceil(M / BLOCK_SIZE_M) * math.ceil(N / BLOCK_SIZE_N)
+    gridX = math.ceil(M / BS_M) * math.ceil(N / BS_N)
     gridY = 1
     gridZ = 1
     shared_memory = metadata["shared"]
