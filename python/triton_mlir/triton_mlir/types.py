@@ -1,6 +1,9 @@
-from triton_mlir.dialects.tt import PointerType
-from triton_mlir.extras import types as _T
-from triton_mlir.ir import Type
+from functools import partial
+from typing import Optional
+
+from .dialects.tt import PointerType
+from .extras import types as _T
+from .ir import Type, StringAttr, UnrankedTensorType, RankedTensorType
 
 
 class _classproperty:
@@ -15,6 +18,23 @@ class _PlusPtr(Type):
     def __pos__(self):
         return PointerType.of_pointee_type(self)
 
+
+def tensor(*shape, element_type: Type = None, encoding: Optional[str] = None):
+    if isinstance(encoding, str):
+        encoding = StringAttr.get(encoding)
+    if not shape or (len(shape) == 1 and isinstance(shape[-1], Type)):
+        if encoding is not None:
+            raise ValueError("UnrankedTensorType does not support encoding.")
+        return _T._shaped(
+            *shape, element_type=element_type, type_constructor=UnrankedTensorType.get
+        )
+    return _T._shaped(
+        *shape,
+        element_type=element_type,
+        type_constructor=partial(RankedTensorType.get, encoding=encoding),
+    )
+
+_T.tensor = tensor
 
 class T:
     @_classproperty
@@ -87,5 +107,5 @@ class T:
     def bfloat16(cls):
         return _T.bf16()
 
-    tensor = lambda *args, **kwargs: _T.tensor(*args, **kwargs)
+    tensor = lambda *args, **kwargs: tensor(*args, **kwargs)
     function = lambda *args, **kwargs: _T.function(*args, **kwargs)
