@@ -83,7 +83,11 @@ class Structure(ctypes.Structure, AsDictMixin):
                         fields[name] = type_()
                     else:
                         # use a closure to capture the callback from the loop scope
-                        fields[name] = type_((lambda callback: lambda *args: callback(*args))(bound_fields[name]))
+                        fields[name] = type_(
+                            (lambda callback: lambda *args: callback(*args))(
+                                bound_fields[name]
+                            )
+                        )
                     del bound_fields[name]
                 else:
                     # default callback implementation (does nothing)
@@ -91,7 +95,9 @@ class Structure(ctypes.Structure, AsDictMixin):
                         default_ = type_(0).restype().value
                     except TypeError:
                         default_ = None
-                    fields[name] = type_((lambda default_: lambda *args: default_)(default_))
+                    fields[name] = type_(
+                        (lambda default_: lambda *args: default_)(default_)
+                    )
             else:
                 # not a callback function, use default initialization
                 if name in bound_fields:
@@ -100,8 +106,11 @@ class Structure(ctypes.Structure, AsDictMixin):
                 else:
                     fields[name] = type_()
         if len(bound_fields) != 0:
-            raise ValueError("Cannot bind the following unknown callback(s) {}.{}".format(
-                cls.__name__, bound_fields.keys()))
+            raise ValueError(
+                "Cannot bind the following unknown callback(s) {}.{}".format(
+                    cls.__name__, bound_fields.keys()
+                )
+            )
         return cls(**fields)
 
 
