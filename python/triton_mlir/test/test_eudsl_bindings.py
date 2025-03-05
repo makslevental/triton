@@ -19,7 +19,7 @@ from triton_mlir.types import T
 pytest.mark.usefixtures("ctx")
 
 
-def test_SwizzledSharedEncodingAttr(ctx):
+def test_swizzled_shared_encoding_attr(ctx):
     swizzled = SwizzledSharedEncodingAttr.get(
         vec=8,
         per_phase=1,

@@ -67,7 +67,7 @@ from triton_mlir.ir import (
 )
 from triton_mlir.types import T
 
-from util import hip_bindings_not_installed, hip_check, backend
+from util import hip_bindings_not_installed, hip_check, backend, backend_
 
 pytest.mark.usefixtures("backend")
 pytest.mark.usefixtures("ctx")
@@ -357,8 +357,7 @@ HERE = Path(__file__).parent
 sys.path.insert(0, str(HERE))
 
 
-@pytest.mark.parametrize("arch", ["gfx1100"])
-def test_smoke(ctx, backend, arch):
+def test_smoke(ctx, backend):
     with open(HERE / "matmul_kernel.mlir") as src:
         matmul_src = src.read()
 
@@ -366,7 +365,7 @@ def test_smoke(ctx, backend, arch):
     assert mod.operation.verify()
 
     triton_mod = unwrap_c_module_op(mod.operation)
-    hsaco = backend.compile(triton_mod, {"arch": arch})
+    hsaco = backend.compile(triton_mod, {"arch": backend.target.arch})
     assert len(hsaco)
     assert "matmul_kernel" in str(hsaco)
 
@@ -389,8 +388,7 @@ def test_round_trip(ctx):
     assert str(e2e_matmul.mod_str()).strip() == matmul_src.strip()
 
 
-@pytest.mark.parametrize("arch", ["gfx1100"])
-def test_compile(ctx, backend, arch):
+def test_compile(ctx, backend):
     with open(HERE / "matmul_kernel.mlir") as src:
         matmul_src = src.read()
 
@@ -410,7 +408,7 @@ def test_compile(ctx, backend, arch):
     assert mod.operation.verify()
 
     triton_mod = unwrap_c_module_op(mod.operation)
-    hsaco = backend.compile(triton_mod, {"arch": arch})
+    hsaco = backend.compile(triton_mod, {"arch": backend.target.arch})
     assert len(hsaco)
     assert "matmul_kernel" in str(hsaco)
 
@@ -1042,15 +1040,17 @@ def test_inline_mod_ttpp(ctx, backend, autotune_config):
 
 
 if __name__ == "__main__":
+    backend = backend_()
     with mlir_mod_ctx(allow_unregistered_dialects=True) as ctx:
-        test_smoke(ctx)
+        test_smoke(ctx, backend)
     with mlir_mod_ctx(allow_unregistered_dialects=True) as ctx:
         test_round_trip(ctx)
     with mlir_mod_ctx(allow_unregistered_dialects=True) as ctx:
-        test_compile(ctx)
+        test_compile(ctx, backend)
     with mlir_mod_ctx(allow_unregistered_dialects=True) as ctx:
-        test_run(ctx)
-    with mlir_mod_ctx(allow_unregistered_dialects=True) as ctx:
-        test_inline_mod(ctx)
-    with mlir_mod_ctx(allow_unregistered_dialects=True) as ctx:
-        test_inline_mod_ttpp(ctx)
+        test_run(ctx, backend)
+    for ac in autotune_configs:
+        with mlir_mod_ctx(allow_unregistered_dialects=True) as ctx:
+            test_inline_mod(ctx, backend, ac)
+        with mlir_mod_ctx(allow_unregistered_dialects=True) as ctx:
+            test_inline_mod_ttpp(ctx, backend, ac)
