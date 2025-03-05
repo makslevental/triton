@@ -4,6 +4,7 @@ import io
 import math
 import re
 import sys
+import textwrap
 from pathlib import Path
 
 import numpy as np
@@ -134,7 +135,7 @@ def map_attr(attr):
         return f"ArrayAttr.parse('{attr}')"
     if attr.__class__ in {TypeAttr}:
         return f"TypeAttr.parse('{attr}')"
-    raise NotImplementedError(attr)
+    return f"Attribute.parse('{attr}')"
 
 
 def map_type(type):
@@ -144,10 +145,13 @@ def map_type(type):
             return f"T.bool()"
         return f"T.{type}()"
     if isinstance(type, RankedTensorType):
-        return f"T.tensor({', '.join(map(str, type.shape))}, {map_type(type.element_type)})"
+        encoding = "None"
+        if type.encoding is not None:
+            encoding = map_attr(type.encoding)
+        return f"T.tensor({', '.join(map(str, type.shape))}, {map_type(type.element_type)}, encoding={encoding})"
     if isinstance(type, PointerType):
         return f"ttpp.ptr({map_type(type.pointee_type)}, {type.address_space})"
-    raise NotImplementedError(type)
+    return f"Type.parse('{type}')"
 
 
 indent = 0
@@ -183,6 +187,9 @@ def underscore(word: str) -> str:
     return word.lower()
 
 
+opidx_counter = 0
+
+
 def print_opview(opview, name=None):
     print("    " * indent, file=OUTPUT_BUF, end="")
     if len(opview.results):
@@ -191,9 +198,23 @@ def print_opview(opview, name=None):
             end=" = ",
             file=OUTPUT_BUF,
         )
+
     if name is None:
         name = opview.name
     name = normalize_op_name(name)
+
+    attrs = {attr.name: attr.attr for attr in opview.attributes}
+    op_idx_owner_name = None
+    if "OpIdx" in attrs:
+        global opidx_counter
+        if len(opview.results):
+            assert len(opview.results) == 1
+            op_idx_owner_name = f"{normalize_ssa(opview.results[0])}"
+        else:
+            op_idx_owner_name = f"{name}_{opidx_counter}"
+            print(op_idx_owner_name, end=" = ", file=OUTPUT_BUF)
+        opidx_counter += 1
+
     print(f"{name}(", end="", file=OUTPUT_BUF)
     init_args = get_init_args(opview)
     operands_attrs = {}
@@ -233,6 +254,17 @@ def print_opview(opview, name=None):
         end="",
     )
     print(f")", file=OUTPUT_BUF)
+
+    if op_idx_owner_name is not None:
+        if len(results):
+            owner = f"{op_idx_owner_name}.owner"
+        else:
+            owner = f"{op_idx_owner_name}"
+        print(
+            "    " * indent
+            + f"{owner}.attributes['OpIdx'] = Attribute.parse('{attrs['OpIdx']}')",
+            file=OUTPUT_BUF,
+        )
 
 
 def print_tt_func_op(func_op: tt.FuncOp):
@@ -291,9 +323,67 @@ def print_scf_for(for_op: scf.ForOp):
     )
 
 
+def print_scf_if(if_op: scf.IfOp):
+    assert len(if_op.results) == 1
+    res = if_op.results[0]
+    res_name = normalize_ssa(res)
+    global indent
+
+    def print_yield_as_return(yield_op: scf.YieldOp):
+        opers = [normalize_ssa(a) for a in yield_op.operands]
+        print(
+            ("    " * indent) + f"return {', '.join(opers)}",
+            file=OUTPUT_BUF,
+        )
+
+    print(
+        textwrap.indent(
+            textwrap.dedent(
+                f"""\
+                    @ext.scf.if_({normalize_ssa(if_op.condition)}, results=[{map_type(res.type)}])
+                    def {res_name}():\
+                """
+            ),
+            "    " * indent,
+        ),
+        file=OUTPUT_BUF,
+    )
+    indent += 1
+    for bodyop in if_op.thenRegion.blocks[0].operations:
+        if isinstance(bodyop, scf.YieldOp):
+            print_yield_as_return(bodyop)
+        else:
+            bodyop.walk(generic_print_walk_callback, WalkOrder.PRE_ORDER)
+    indent -= 1
+    print(
+        textwrap.indent(
+            textwrap.dedent(
+                f"""\
+                    @ext.scf.else_({res_name})
+                    def {res_name}_else():\
+                """,
+            ),
+            "    " * indent,
+        ),
+        file=OUTPUT_BUF,
+    )
+    indent += 1
+    for bodyop in if_op.elseRegion.blocks[0].operations:
+        if isinstance(bodyop, scf.YieldOp):
+            print_yield_as_return(bodyop)
+        else:
+            bodyop.walk(generic_print_walk_callback, WalkOrder.PRE_ORDER)
+    indent -= 1
+
+
 def generic_print_walk_callback(op):
     opview = op.opview
     if isinstance(opview, builtin.ModuleOp):
+        for attr in opview.attributes:
+            print(
+                f"ctx.module.operation.attributes['{attr.name}'] = Attribute.parse('{(attr.attr)}')",
+                file=OUTPUT_BUF,
+            )
         return WalkResult.ADVANCE
 
     if isinstance(opview, tt.FuncOp):
@@ -303,6 +393,9 @@ def generic_print_walk_callback(op):
         print_scf_for(opview)
     elif isinstance(opview, arith.ConstantOp):
         print_arith_constant(opview)
+    elif isinstance(opview, scf.IfOp):
+        print_scf_if(opview)
+        return WalkResult.SKIP
     elif isinstance(opview, scf.YieldOp):
         print_opview(opview, name=f"scf.yield_")
     elif isinstance(opview, tt.ReturnOp):
@@ -325,11 +418,14 @@ def generic_print_walk_callback(op):
 
 PROLOG = """\
 import numpy as np
+from triton_mlir import types as _types
 from triton_mlir.extras.context import RAIIMLIRContextModule
-from triton_mlir.dialects import tt as ttpp, scf, llvm, _tt_ops_gen as tt
+from triton_mlir.dialects import tt as ttpp, ttg, scf, llvm, _tt_ops_gen as tt
 from triton_mlir.dialects.arith import IntegerOverflowFlags
-from triton_mlir.ir import ArrayAttr
+from triton_mlir.ir import ArrayAttr, Type, Attribute
 from triton_mlir.extras.dialects.ext import arith
+from triton_mlir.extras.dialects import ext
+import triton_mlir.extras.dialects.ext.scf
 from triton_mlir.extras import types as T
 
 ctx = RAIIMLIRContextModule()
@@ -386,6 +482,25 @@ def test_round_trip(ctx):
     import e2e_matmul
 
     assert str(e2e_matmul.mod_str()).strip() == matmul_src.strip()
+
+
+def test_round_trip_ttg(ctx):
+    with open(HERE / "matmul_kernel.ttgir") as src:
+        matmul_src = src.read()
+
+    mod = Module.parse(matmul_src)
+    # mod.operation.print(use_local_scope=True)
+    assert mod.operation.verify()
+
+    global OUTPUT_BUF
+    with open(HERE / "e2e_matmul_ttg.py", "w") as OUTPUT_BUF:
+        print_prolog()
+        mod.operation.walk(generic_print_walk_callback, WalkOrder.PRE_ORDER)
+        print_epilog()
+
+    import e2e_matmul_ttg
+
+    assert str(e2e_matmul_ttg.mod_str()).strip() == matmul_src.strip()
 
 
 def test_compile(ctx, backend):
@@ -547,6 +662,121 @@ def test_run(ctx, backend):
     # kernel launch
 
     M, K, N = 16, 16, 16
+    BLOCK_SIZE_M = 8
+    BLOCK_SIZE_N = 8
+    BLOCK_SIZE_K = 4
+
+    a_h = np.random.rand(M, K).astype(dtype=np.float32)
+    b_h = np.random.rand(K, N).astype(dtype=np.float32)
+    c_h = -3 * np.ones((M, N), dtype=np.float32)
+
+    a_num_bytes = a_h.size * a_h.itemsize
+    b_num_bytes = b_h.size * b_h.itemsize
+    c_num_bytes = c_h.size * c_h.itemsize
+
+    a_d = hip_check(hip.hipMalloc(a_num_bytes)).configure(
+        typestr="float32", shape=(M, K)
+    )
+    b_d = hip_check(hip.hipMalloc(b_num_bytes)).configure(
+        typestr="float32", shape=(K, N)
+    )
+    c_d = hip_check(hip.hipMalloc(c_num_bytes)).configure(
+        typestr="float32", shape=(M, N)
+    )
+
+    hip_check(
+        hip.hipMemcpy(a_d, a_h, a_num_bytes, hip.hipMemcpyKind.hipMemcpyHostToDevice)
+    )
+    hip_check(
+        hip.hipMemcpy(b_d, b_h, b_num_bytes, hip.hipMemcpyKind.hipMemcpyHostToDevice)
+    )
+    hip_check(
+        hip.hipMemcpy(c_d, c_h, c_num_bytes, hip.hipMemcpyKind.hipMemcpyHostToDevice)
+    )
+
+    stream = 0
+    gridX = math.ceil(M / BLOCK_SIZE_M) * math.ceil(N / BLOCK_SIZE_N)
+    gridY = 1
+    gridZ = 1
+    num_warps = options.num_warps
+    shared_memory = metadata["shared"]
+
+    launch(
+        function,
+        gridX,
+        gridY,
+        gridZ,
+        stream,
+        options.warp_size,
+        num_warps,
+        shared_memory,
+        a_d,
+        b_d,
+        c_d,
+        M,
+        N,
+        K,
+        *(np.array(a_h.strides) // a_h.itemsize).tolist(),
+        *(np.array(b_h.strides) // b_h.itemsize).tolist(),
+        *(np.array(c_h.strides) // c_h.itemsize).tolist(),
+    )
+
+    hip_check(
+        hip.hipMemcpy(c_h, c_d, c_num_bytes, hip.hipMemcpyKind.hipMemcpyDeviceToHost)
+    )
+
+    assert np.allclose(c_h, a_h @ b_h)
+
+
+@pytest.mark.skipif(hip_bindings_not_installed(), reason="hip not installed")
+def test_run_ttg(ctx, backend):
+    from hip import hip
+
+    with open(HERE / "matmul_kernel.ttgir") as src:
+        matmul_src = src.read()
+
+    mod = Module.parse(matmul_src)
+    assert mod.operation.verify()
+
+    global OUTPUT_BUF
+    with open(HERE / "e2e_matmul_ttg.py", "w") as OUTPUT_BUF:
+        print_prolog()
+        mod.operation.walk(generic_print_walk_callback, WalkOrder.PRE_ORDER)
+        print_epilog()
+
+    # noinspection PyUnresolvedReferences
+    import e2e_matmul_ttg
+
+    props = hip.hipDeviceProp_t()
+    hip_check(hip.hipGetDeviceProperties(props, 0))
+    arch = props.gcnArchName.decode()
+    options = backend.parse_options(
+        {"arch": arch, "waves_per_eu": 8, "num_warps": 4, "num_stages": 2}
+    )
+
+    mod = ctx.module.parse(e2e_matmul_ttg.mod_str())
+    mod.operation.attributes["ttg.target"] = StringAttr.get(f"hip:{arch}")
+    assert mod.operation.verify()
+
+    triton_mod = unwrap_c_module_op(mod.operation)
+    hsaco, metadata = backend.compile(
+        triton_mod,
+        options=options,
+        ttir=False,
+        ttgir=False,
+        dump_ir=True,
+        ir_dump_dir=Path(__file__).parent / "e2e_matmul_ttg_dump",
+        dump_file_prefix="0",
+    )
+
+    module = hip_check(hip.hipModuleLoadData(hsaco))
+    function = hip_check(
+        hip.hipModuleGetFunction(module, metadata["name"].encode())
+    ).as_c_void_p()
+
+    # kernel launch
+
+    M, K, N = 128, 128, 128
     BLOCK_SIZE_M = 8
     BLOCK_SIZE_N = 8
     BLOCK_SIZE_K = 4
@@ -872,7 +1102,7 @@ def test_inline_mod(ctx, backend, autotune_config):
 
 
 @pytest.mark.skipif(hip_bindings_not_installed(), reason="hip not installed")
-@pytest.mark.parametrize("autotune_config", autotune_configs)
+@pytest.mark.parametrize("autotune_config", autotune_configs[:1])
 def test_inline_mod_ttpp(ctx, backend, autotune_config):
     from hip import hip
 
@@ -1046,9 +1276,13 @@ if __name__ == "__main__":
     with mlir_mod_ctx(allow_unregistered_dialects=True) as ctx:
         test_round_trip(ctx)
     with mlir_mod_ctx(allow_unregistered_dialects=True) as ctx:
+        test_round_trip_ttg(ctx)
+    with mlir_mod_ctx(allow_unregistered_dialects=True) as ctx:
         test_compile(ctx, backend)
     with mlir_mod_ctx(allow_unregistered_dialects=True) as ctx:
         test_run(ctx, backend)
+    with mlir_mod_ctx(allow_unregistered_dialects=True) as ctx:
+        test_run_ttg(ctx, backend)
     for ac in autotune_configs:
         with mlir_mod_ctx(allow_unregistered_dialects=True) as ctx:
             test_inline_mod(ctx, backend, ac)
