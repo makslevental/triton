@@ -571,11 +571,16 @@ class HIPBackend(BaseBackend):
 
     def compile(
         self,
-        triton_mod,
+        mod,
         options=None,
         dump_ir=False,
         ir_dump_dir: Optional[Path] = None,
         dump_file_prefix=None,
+        ttir=True,
+        ttgir=True,
+        llir=True,
+        amdgcn=True,
+        hsaco=True,
     ):
         if ir_dump_dir is None:
             ir_dump_dir = Path.cwd().absolute()
@@ -585,6 +590,12 @@ class HIPBackend(BaseBackend):
             dump_file_prefix = ""
         else:
             dump_file_prefix += "_"
+
+        metadata = {}
+        if options is None:
+            options = {}
+        if isinstance(options, dict):
+            options = self.parse_options(options)
 
         def maybe_dump(obj, fn, suffix="mlir", binary=False):
             mode = "w"
@@ -596,39 +607,39 @@ class HIPBackend(BaseBackend):
                 with open(ir_dump_dir / f"{dump_file_prefix}{fn}.{suffix}", mode) as f:
                     f.write(serialized_obj)
 
-        assert isinstance(triton_mod, tritonir.module)
-        maybe_dump(triton_mod, "triton_mod")
+        assert isinstance(mod, tritonir.module)
+        maybe_dump(mod, "triton_mod")
 
-        ttir_mod = self.make_ttir(triton_mod)
-        assert isinstance(ttir_mod, tritonir.module)
-        assert ttir_mod.verify()
-        maybe_dump(ttir_mod, "ttir_mod")
+        if ttir:
+            mod = self.make_ttir(mod)
+            assert isinstance(mod, tritonir.module)
+            assert mod.verify()
+            maybe_dump(mod, "ttir_mod")
 
-        if options is None:
-            options = {}
-        if isinstance(options, dict):
-            options = self.parse_options(options)
-        assert isinstance(options, HIPOptions)
-        ttgir_mod = self.make_ttgir(ttir_mod, options)
-        assert isinstance(ttgir_mod, tritonir.module)
-        assert ttgir_mod.verify()
-        maybe_dump(ttgir_mod, "ttgir_mod")
+        if ttgir:
+            assert isinstance(options, HIPOptions)
+            mod = self.make_ttgir(mod, options)
+            assert isinstance(mod, tritonir.module)
+            assert mod.verify()
+            maybe_dump(mod, "ttgir_mod")
 
-        metadata = {}
-        llvm_mod = self.make_llir(ttgir_mod, metadata, options)
-        assert isinstance(llvm_mod, llvm.module)
-        assert llvm_mod.verify()
-        maybe_dump(llvm_mod, "llvm_mod", suffix="ll")
+        if llir:
+            mod = self.make_llir(mod, metadata, options)
+            assert isinstance(mod, llvm.module)
+            assert mod.verify()
+            maybe_dump(mod, "llvm_mod", suffix="ll")
 
-        amdgcn = self.make_amdgcn(str(llvm_mod), metadata, options)
-        assert len(amdgcn)
-        maybe_dump(amdgcn, "amdgcn", suffix="amdgcn")
+        if amdgcn:
+            mod = self.make_amdgcn(str(mod), metadata, options)
+            assert len(mod)
+            maybe_dump(mod, "amdgcn", suffix="amdgcn")
 
-        hsaco = self.make_hsaco(amdgcn, options)
-        assert len(hsaco)
-        maybe_dump(hsaco, "hsaco", suffix="hsaco", binary=True)
+        if hsaco:
+            mod = self.make_hsaco(mod, options)
+            assert len(mod)
+            maybe_dump(mod, "hsaco", suffix="hsaco", binary=True)
 
-        return hsaco, metadata
+        return mod, metadata
 
 
 def make_backend(arch, warp_size):
