@@ -13,14 +13,16 @@ pytest.mark.usefixtures("ctx")
 
 from triton_mlir.dialects import tt
 from triton_mlir.types import T
-from triton_mlir.compiler import HIPBackend, unwrap_c_module_op, tritonir, llvm
+from triton_mlir.compiler import (
+    HIPBackend,
+    unwrap_c_module_op,
+    tritonir,
+    llvm,
+    make_backend,
+)
 
-from util import backend
 
-pytest.mark.usefixtures("backend")
-
-
-def test_smoke_test(ctx, backend):
+def test_smoke_test(ctx):
     src = dedent(
         """\
         module {
@@ -38,7 +40,7 @@ def test_smoke_test(ctx, backend):
     assert isinstance(triton_mod, tritonir.module)
 
 
-def test_make_ttir(ctx, backend):
+def test_make_ttir(ctx):
     @tt.jit
     def kernel_0123(
         arg0: +T.float32, arg1: +T.float32, arg2: +T.float32, arg3: T.int32
@@ -79,13 +81,13 @@ def test_make_ttir(ctx, backend):
     assert ctx.module.operation.verify()
     triton_mod = unwrap_c_module_op(ctx.module.operation)
     assert isinstance(triton_mod, tritonir.module)
+    backend = make_backend("gfx1100", 32)
     ttir_mod = backend.make_ttir(triton_mod)
     assert isinstance(triton_mod, tritonir.module)
     assert ttir_mod.verify()
 
 
-@pytest.mark.parametrize("arch", ["gfx1100"])
-def test_make_ttgir(ctx, backend, arch):
+def test_make_ttgir(ctx):
     @tt.jit
     def kernel_0123(
         arg0: +T.float32, arg1: +T.float32, arg2: +T.float32, arg3: T.int32
@@ -127,6 +129,7 @@ def test_make_ttgir(ctx, backend, arch):
 
     triton_mod = unwrap_c_module_op(ctx.module.operation)
     assert isinstance(triton_mod, tritonir.module)
+    backend = make_backend("gfx1100", 32)
     ttir_mod = backend.make_ttir(triton_mod)
     assert isinstance(ttir_mod, tritonir.module)
     assert ttir_mod.verify()
@@ -136,8 +139,7 @@ def test_make_ttgir(ctx, backend, arch):
     assert ttgir_mod.verify()
 
 
-@pytest.mark.parametrize("arch", ["gfx1100"])
-def test_make_llir(ctx, backend, arch):
+def test_make_llir(ctx):
     @tt.jit
     def kernel_0123(
         arg0: +T.float32, arg1: +T.float32, arg2: +T.float32, arg3: T.int32
@@ -179,6 +181,8 @@ def test_make_llir(ctx, backend, arch):
 
     triton_mod = unwrap_c_module_op(ctx.module.operation)
     assert isinstance(triton_mod, tritonir.module)
+
+    backend = make_backend("gfx1100", 32)
     ttir_mod = backend.make_ttir(triton_mod)
     assert isinstance(ttir_mod, tritonir.module)
     assert ttir_mod.verify()
@@ -194,8 +198,7 @@ def test_make_llir(ctx, backend, arch):
     assert llvm_mod.verify()
 
 
-@pytest.mark.parametrize("arch", ["gfx1100"])
-def test_make_amdgcn(ctx, backend, arch):
+def test_make_amdgcn(ctx):
     @tt.jit
     def kernel_0123(
         arg0: +T.float32, arg1: +T.float32, arg2: +T.float32, arg3: T.int32
@@ -237,6 +240,9 @@ def test_make_amdgcn(ctx, backend, arch):
 
     triton_mod = unwrap_c_module_op(ctx.module.operation)
     assert isinstance(triton_mod, tritonir.module)
+
+    backend = make_backend("gfx1100", 32)
+
     ttir_mod = backend.make_ttir(triton_mod)
     assert isinstance(ttir_mod, tritonir.module)
     assert ttir_mod.verify()
@@ -256,8 +262,7 @@ def test_make_amdgcn(ctx, backend, arch):
     print(amdgcn)
 
 
-@pytest.mark.parametrize("arch", ["gfx1100"])
-def test_make_hsaco(ctx, backend, arch):
+def test_make_hsaco(ctx):
     @tt.jit
     def kernel_0123(
         arg0: +T.float32, arg1: +T.float32, arg2: +T.float32, arg3: T.int32
@@ -299,6 +304,9 @@ def test_make_hsaco(ctx, backend, arch):
 
     triton_mod = unwrap_c_module_op(ctx.module.operation)
     assert isinstance(triton_mod, tritonir.module)
+
+    backend = make_backend("gfx1100", 32)
+
     ttir_mod = backend.make_ttir(triton_mod)
     assert isinstance(ttir_mod, tritonir.module)
     assert ttir_mod.verify()
@@ -320,8 +328,7 @@ def test_make_hsaco(ctx, backend, arch):
     assert "kernel_0123" in str(hsaco)
 
 
-@pytest.mark.parametrize("arch", ["gfx1100"])
-def test_compile(ctx, backend, arch):
+def test_compile(ctx):
     @tt.jit
     def kernel_0123(
         arg0: +T.float32, arg1: +T.float32, arg2: +T.float32, arg3: T.int32
@@ -362,6 +369,8 @@ def test_compile(ctx, backend, arch):
     ctx.module.operation.verify()
 
     triton_mod = unwrap_c_module_op(ctx.module.operation)
+    arch = "gfx1100"
+    backend = make_backend("gfx1100", 32)
     hsaco, metadata = backend.compile(triton_mod, {"arch": arch})
     assert len(hsaco)
     assert "kernel_0123" in str(hsaco)

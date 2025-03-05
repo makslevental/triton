@@ -1,7 +1,6 @@
 import array
 import math
 import random
-from pathlib import Path
 
 import numpy as np
 import pytest
@@ -15,9 +14,16 @@ from triton_mlir.extras.testing import mlir_ctx as ctx, filecheck, MLIRContext
 
 from triton_mlir.dialects import tt
 from triton_mlir.types import T
-from triton_mlir.compiler import HIPBackend, unwrap_c_module_op, tritonir, llvm
+from triton_mlir.compiler import (
+    HIPBackend,
+    unwrap_c_module_op,
+    tritonir,
+    llvm,
+    HIPBackend,
+)
 
-from util import hip_bindings_not_installed, hip_check, backend
+# noinspection PyUnresolvedReferences
+from util import hip_bindings_not_installed, hip_check, backend, backend_
 
 pytest.mark.usefixtures("backend")
 pytest.mark.usefixtures("ctx")
@@ -26,62 +32,11 @@ pytest.mark.usefixtures("ctx")
 if hip_bindings_not_installed():
     pytest.skip(allow_module_level=True)
 
-from hip import hip, hiprtc
-
-
-def test_smoke():
-    props = hip.hipDeviceProp_t()
-    hip_check(hip.hipGetDeviceProperties(props, 0))
-
-    source = b"""\
-    extern "C" __global__ void print_tid() {
-      printf("tid: %d\\n", (int) threadIdx.x);
-    }
-    """
-
-    prog = hip_check(hiprtc.hiprtcCreateProgram(source, b"print_tid", 0, [], []))
-
-    props = hip.hipDeviceProp_t()
-    hip_check(hip.hipGetDeviceProperties(props, 0))
-    arch = props.gcnArchName
-
-    print(f"Compiling kernel for {arch}")
-
-    cflags = [b"--offload-arch=" + arch]
-    (err,) = hiprtc.hiprtcCompileProgram(prog, len(cflags), cflags)
-    if err != hiprtc.hiprtcResult.HIPRTC_SUCCESS:
-        log_size = hip_check(hiprtc.hiprtcGetProgramLogSize(prog))
-        log = bytearray(log_size)
-        hip_check(hiprtc.hiprtcGetProgramLog(prog, log))
-        raise RuntimeError(log.decode())
-    code_size = hip_check(hiprtc.hiprtcGetCodeSize(prog))
-    code = bytearray(code_size)
-    hip_check(hiprtc.hiprtcGetCode(prog, code))
-    module = hip_check(hip.hipModuleLoadData(code))
-    kernel = hip_check(hip.hipModuleGetFunction(module, b"print_tid"))
-    #
-    hip_check(
-        hip.hipModuleLaunchKernel(
-            kernel,
-            *(1, 1, 1),  # grid
-            *(32, 1, 1),  # block
-            sharedMemBytes=0,
-            stream=None,
-            kernelParams=None,
-            extra=None,
-        )
-    )
-
-    hip_check(hip.hipDeviceSynchronize())
-    hip_check(hip.hipModuleUnload(module))
-    hip_check(hiprtc.hiprtcDestroyProgram(prog.createRef()))
-
-    print("ok")
+from hip import hip
 
 
 # https://triton-lang.org/main/getting-started/tutorials/01-vector-add.html
-@pytest.mark.parametrize("arch", ["gfx1100"])
-def test_run_vector_add_bare(ctx, backend, arch):
+def test_run_vector_add_bare(ctx: MLIRContext, backend: HIPBackend):
     BLOCK_SIZE = 64
 
     @tt.jit
@@ -123,7 +78,7 @@ def test_run_vector_add_bare(ctx, backend, arch):
     vector_add.emit()
     ctx.module.operation.verify()
     triton_mod = unwrap_c_module_op(ctx.module.operation)
-    hsaco, metadata = backend.compile(triton_mod, {"arch": arch})
+    hsaco, metadata = backend.compile(triton_mod, {"arch": backend.target.arch})
     assert metadata.get("shared") == 0
 
     props = hip.hipDeviceProp_t()
@@ -198,8 +153,7 @@ def test_run_vector_add_bare(ctx, backend, arch):
 
 
 # https://triton-lang.org/main/getting-started/tutorials/01-vector-add.html
-@pytest.mark.parametrize("arch", ["gfx1100"])
-def test_run_vector_add_np(ctx, backend, arch):
+def test_run_vector_add_np(ctx: MLIRContext, backend: HIPBackend):
     BLOCK_SIZE = 64
 
     @tt.jit
@@ -242,7 +196,7 @@ def test_run_vector_add_np(ctx, backend, arch):
     vector_add.emit()
     ctx.module.operation.verify()
     triton_mod = unwrap_c_module_op(ctx.module.operation)
-    hsaco, metadata = backend.compile(triton_mod, {"arch": arch})
+    hsaco, metadata = backend.compile(triton_mod, {"arch": backend.target.arch})
     assert metadata.get("shared") == 0
 
     props = hip.hipDeviceProp_t()
@@ -310,8 +264,8 @@ def test_run_vector_add_np(ctx, backend, arch):
 
 
 if __name__ == "__main__":
-    test_smoke()
+    backend = backend_()
     with mlir_mod_ctx(allow_unregistered_dialects=True) as ctx:
-        test_run_vector_add_bare(ctx)
+        test_run_vector_add_bare(ctx, backend)
     with mlir_mod_ctx(allow_unregistered_dialects=True) as ctx:
-        test_run_vector_add_np(ctx)
+        test_run_vector_add_np(ctx, backend)
