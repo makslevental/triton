@@ -32,13 +32,14 @@ def hip_bindings_not_installed():
         return True
 
 
-@pytest.fixture
-def backend(request) -> HIPBackend:
-    arch = None
-    if hasattr(request.node, "callspec"):
-        arch = request.node.callspec.params.get("arch")
-    if arch is None:
-        arch = ENV_OR_DEFAULT_ARCH
+def backend_() -> HIPBackend:
+    from hip import hip
 
+    props = hip.hipDeviceProp_t()
+    hip_check(hip.hipGetDeviceProperties(props, 0))
+    arch = props.gcnArchName.decode()
     warp_size = 32 if "gfx10" in arch or "gfx11" in arch or "gfx12" in arch else 64
     return make_backend(arch, warp_size)
+
+
+backend = pytest.fixture(backend_)

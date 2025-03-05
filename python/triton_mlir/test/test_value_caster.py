@@ -3,6 +3,7 @@ from triton_mlir.types import T
 
 # this needs to be below the triton_mlir_bindings
 from triton_mlir.extras.dialects.ext.tensor import empty
+
 # noinspection PyUnresolvedReferences
 from triton_mlir.dialects import ttpp
 
