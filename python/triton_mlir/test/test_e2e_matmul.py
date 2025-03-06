@@ -9,15 +9,9 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from triton_mlir.compiler import (
-    HIPBackend,
-    unwrap_c_module_op,
-    tritonir,
-    llvm,
-    GPUTarget,
-)
-from triton_mlir.dialects import tt, scf, llvm, builtin, ttpp
-from triton_mlir.dialects.arith import IntegerOverflowFlags
+from triton_mlir.compiler import unwrap_c_module_op
+from triton_mlir.dialects import tt, scf, builtin, ttg, amdgpu
+from triton_mlir.extras.ast.canonicalize import canonicalize
 
 # noinspection PyUnresolvedReferences
 from triton_mlir.dialects.tt import (
@@ -60,7 +54,6 @@ from triton_mlir.ir import (
     OpView,
     OpOperandList,
     IntegerType,
-    FloatType,
     RankedTensorType,
     F32Type,
     F16Type,
@@ -68,7 +61,8 @@ from triton_mlir.ir import (
 )
 from triton_mlir.types import T
 
-from util import hip_bindings_not_installed, hip_check, backend, backend_
+# noinspection PyUnresolvedReferences
+from util import hip_bindings_not_installed, hip_check, backend_, backend
 
 pytest.mark.usefixtures("backend")
 pytest.mark.usefixtures("ctx")
@@ -135,6 +129,22 @@ def map_attr(attr):
         return f"ArrayAttr.parse('{attr}')"
     if attr.__class__ in {TypeAttr}:
         return f"TypeAttr.parse('{attr}')"
+    if isinstance(attr, ttg.BlockedEncodingAttr):
+        return f"ttg.BlockedEncodingAttr.get(size_per_thread={attr.size_per_thread}, threads_per_warp__={attr.threads_per_warp__}, warps_per_cta__={attr.warps_per_cta__}, order={attr.order})"
+    if isinstance(attr, ttg.SliceEncodingAttr):
+        return (
+            f"ttg.SliceEncodingAttr.get(dim={attr.dim}, parent={map_attr(attr.parent)})"
+        )
+    if isinstance(attr, ttg.SwizzledSharedEncodingAttr):
+        return f"ttg.SwizzledSharedEncodingAttr.get(vec={attr.vec}, per_phase={attr.per_phase}, max_phase={attr.max_phase}, order={attr.order})"
+    if isinstance(attr, ttg.DotOperandEncodingAttr):
+        return f"ttg.DotOperandEncodingAttr.get(op_idx={attr.op_idx}, parent={map_attr(attr.parent)})"
+    if isinstance(attr, ttg.SharedMemorySpaceAttr):
+        return f"ttg.SharedMemorySpaceAttr.get()"
+    if isinstance(attr, ttg.SharedMemorySpaceAttr):
+        return f"ttg.SharedMemorySpaceAttr.get()"
+    if isinstance(attr, amdgpu.OpIdxAttr):
+        return f"amdgpu.OpIdxAttr.get({attr.value})"
     return f"Attribute.parse('{attr}')"
 
 
@@ -151,6 +161,8 @@ def map_type(type):
         return f"T.tensor({', '.join(map(str, type.shape))}, {map_type(type.element_type)}, encoding={encoding})"
     if isinstance(type, PointerType):
         return f"ttpp.ptr({map_type(type.pointee_type)}, {type.address_space})"
+    if isinstance(type, ttg.MemDescType):
+        return f"ttg.MemDescType.get(shape={type.shape}, element_type={map_type(type.element_type)}, encoding={map_attr(type.encoding)}, memory_space={map_attr(type.memory_space)}, mutable_memory={type.mutable_memory}, alloc_shape={type.alloc_shape})"
     return f"Type.parse('{type}')"
 
 
@@ -262,7 +274,7 @@ def print_opview(opview, name=None):
             owner = f"{op_idx_owner_name}"
         print(
             "    " * indent
-            + f"{owner}.attributes['OpIdx'] = Attribute.parse('{attrs['OpIdx']}')",
+            + f"{owner}.attributes['OpIdx'] = amdgpu.OpIdxAttr.get({attrs['OpIdx'].value})",
             file=OUTPUT_BUF,
         )
 
@@ -420,7 +432,7 @@ PROLOG = """\
 import numpy as np
 from triton_mlir import types as _types
 from triton_mlir.extras.context import RAIIMLIRContextModule
-from triton_mlir.dialects import tt as ttpp, ttg, scf, llvm, _tt_ops_gen as tt
+from triton_mlir.dialects import tt as ttpp, ttg, scf, llvm, _tt_ops_gen as tt, amdgpu
 from triton_mlir.dialects.arith import IntegerOverflowFlags
 from triton_mlir.ir import ArrayAttr, Type, Attribute
 from triton_mlir.extras.dialects.ext import arith
@@ -892,6 +904,14 @@ autotune_configs = [
         "WAVES_PER_EU": 8,
         "NUM_WARPS": 4,
     },
+    {
+        "BLOCK_SIZE_M": 8,
+        "BLOCK_SIZE_N": 8,
+        "BLOCK_SIZE_K": 4,
+        "GROUP_SIZE_M": 1,
+        "WAVES_PER_EU": 8,
+        "NUM_WARPS": 4,
+    },
 ]
 
 
@@ -1269,6 +1289,440 @@ def test_inline_mod_ttpp(ctx, backend, autotune_config):
     assert np.allclose(c_h, correct)
 
 
+@pytest.mark.skipif(hip_bindings_not_installed(), reason="hip not installed")
+@pytest.mark.parametrize("autotune_config", [autotune_configs[-1]])
+def test_inline_mod_ttg(ctx, backend, autotune_config):
+    from hip import hip
+
+    M, K, N = 16, 16, 16
+    BS_M = autotune_config["BLOCK_SIZE_M"]
+    BS_N = autotune_config["BLOCK_SIZE_N"]
+    BS_K = autotune_config["BLOCK_SIZE_K"]
+    GS_M = autotune_config["GROUP_SIZE_M"]
+    WAVES_PER_EU = autotune_config["WAVES_PER_EU"]
+    NUM_WARPS = autotune_config["NUM_WARPS"]
+
+    ctx.module.operation.attributes["ttg.num-ctas"] = IntegerAttr.get(T.i32, 1)
+    ctx.module.operation.attributes["ttg.num-warps"] = IntegerAttr.get(T.i32, 4)
+    ctx.module.operation.attributes["ttg.threads-per-warp"] = IntegerAttr.get(T.i32, 32)
+
+    blocked = ttg.BlockedEncodingAttr.get(
+        size_per_thread=[1, 1],
+        threads_per_warp__=[4, 8],
+        warps_per_cta__=[4, 1],
+        order=[1, 0],
+    )
+    blocked1 = ttg.BlockedEncodingAttr.get(
+        size_per_thread=[1, 1],
+        threads_per_warp__=[4, 8],
+        warps_per_cta__=[1, 4],
+        order=[0, 1],
+    )
+    blocked2 = ttg.BlockedEncodingAttr.get(
+        size_per_thread=[1, 1],
+        threads_per_warp__=[8, 4],
+        warps_per_cta__=[1, 4],
+        order=[0, 1],
+    )
+    sliced = ttg.SliceEncodingAttr.get(dim=1, parent=blocked2)
+    sliced1 = ttg.SliceEncodingAttr.get(dim=0, parent=blocked2)
+    sliced2 = ttg.SliceEncodingAttr.get(dim=1, parent=blocked1)
+    sliced3 = ttg.SliceEncodingAttr.get(dim=0, parent=blocked1)
+    memdesc = ttg.MemDescType.get(
+        shape=[1, 8, 4],
+        element_type=T.f32,
+        encoding=ttg.SwizzledSharedEncodingAttr.get(
+            vec=1, per_phase=1, max_phase=1, order=[0, 1]
+        ),
+        memory_space=ttg.SharedMemorySpaceAttr.get(),
+        mutable_memory=True,
+        alloc_shape=[1, 8, 4],
+    )
+    memdesc1 = ttg.MemDescType.get(
+        shape=[1, 4, 8],
+        element_type=T.f32,
+        encoding=ttg.SwizzledSharedEncodingAttr.get(
+            vec=1, per_phase=1, max_phase=1, order=[0, 1]
+        ),
+        memory_space=ttg.SharedMemorySpaceAttr.get(),
+        mutable_memory=True,
+        alloc_shape=[1, 4, 8],
+    )
+    memdesc2 = ttg.MemDescType.get(
+        shape=[8, 4],
+        element_type=T.f32,
+        encoding=ttg.SwizzledSharedEncodingAttr.get(
+            vec=1, per_phase=1, max_phase=1, order=[0, 1]
+        ),
+        memory_space=ttg.SharedMemorySpaceAttr.get(),
+        mutable_memory=True,
+        alloc_shape=[8, 4],
+    )
+    memdesc3 = ttg.MemDescType.get(
+        shape=[4, 8],
+        element_type=T.f32,
+        encoding=ttg.SwizzledSharedEncodingAttr.get(
+            vec=1, per_phase=1, max_phase=1, order=[0, 1]
+        ),
+        memory_space=ttg.SharedMemorySpaceAttr.get(),
+        mutable_memory=True,
+        alloc_shape=[4, 8],
+    )
+
+    @tt.jit(
+        arg_attrs=ArrayAttr.parse(
+            "[{tt.divisibility = 16 : i32}, {tt.divisibility = 16 : i32}, {tt.divisibility = 16 : i32}, {}, {}, {}, {}, {}, {}, {}, {}, {}]"
+        ),
+        function_type=T.function(
+            inputs=[
+                tt.ptr(T.f32),
+                tt.ptr(T.f32),
+                tt.ptr(T.f32),
+                T.i32,
+                T.i32,
+                T.i32,
+                T.i32,
+                T.i32,
+                T.i32,
+                T.i32,
+                T.i32,
+                T.i32,
+            ],
+            results=[],
+        ),
+        noinline=False,
+        sym_name="matmul_kernel",
+        sym_visibility="public",
+    )
+    @canonicalize(using=scf.canonicalizer)
+    def matmul_kernel_3(
+        arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11
+    ):
+        cst = arith.constant(
+            np.full([8, 8], 0.0, np.float32), T.tensor(8, 8, T.f32, encoding=blocked)
+        )
+        cst_0 = arith.constant(
+            np.full([4, 8], 0.0, np.float32), T.tensor(4, 8, T.f32, encoding=blocked1)
+        )
+        cst_1 = arith.constant(
+            np.full([8, 4], 0.0, np.float32), T.tensor(8, 4, T.f32, encoding=blocked2)
+        )
+        c0_i32 = arith.constant(0, T.i32)
+        c1_i32 = arith.constant(1, T.i32)
+        c3_i32 = arith.constant(3, T.i32)
+        c4_i32 = arith.constant(4, T.i32)
+        c7_i32 = arith.constant(7, T.i32)
+        c8_i32 = arith.constant(8, T.i32)
+        v0 = tt.splat(result=T.tensor(8, 4, tt.ptr(T.f32), encoding=blocked2), src=arg0)
+        v1 = tt.get_program_id(axis=0)
+        v2 = arith.addi(arg4, c7_i32)
+        v3 = arith.divsi(v2, c8_i32)
+        v4 = arith.divsi(v1, v3)
+        v5 = arith.remsi(v1, v3)
+        v6 = arith.addi(arg3, c7_i32)
+        v7 = arith.divsi(v6, c8_i32)
+        v8 = arith.subi(v7, v4)
+        v9 = arith.minsi(v8, c1_i32)
+        v10 = arith.remsi(v5, v9)
+        v11 = arith.addi(v4, v10)
+        v12 = arith.muli(v11, c8_i32)
+        v13 = tt.splat(result=T.tensor(8, T.i32, encoding=sliced), src=v12)
+        v14 = tt.make_range(result=T.tensor(8, T.i32, encoding=sliced), start=0, end=8)
+        v15 = arith.addi(v13, v14)
+        v16 = tt.splat(result=T.tensor(8, T.i32, encoding=sliced), src=arg3)
+        v17 = arith.remsi(v15, v16)
+        v18 = tt.expand_dims(src=v17, axis=1)
+        v19 = tt.splat(result=T.tensor(8, 1, T.i32, encoding=blocked2), src=arg6)
+        v20 = arith.muli(v18, v19)
+        v21 = tt.broadcast(result=T.tensor(8, 4, T.i32, encoding=blocked2), src=v20)
+        v22 = tt.make_range(result=T.tensor(4, T.i32, encoding=sliced1), start=0, end=4)
+        v23 = tt.expand_dims(src=v22, axis=0)
+        v24 = tt.splat(result=T.tensor(1, 4, T.i32, encoding=blocked2), src=arg7)
+        v25 = arith.muli(v23, v24)
+        v26 = tt.broadcast(result=T.tensor(8, 4, T.i32, encoding=blocked2), src=v25)
+        v27 = arith.addi(v21, v26)
+        v28 = tt.addptr(
+            result=T.tensor(8, 4, tt.ptr(T.f32), encoding=blocked2), ptr=v0, offset=v27
+        )
+        v29 = arith.addi(arg5, c3_i32)
+        v30 = arith.divsi(v29, c4_i32)
+        v31 = arith.cmpi("sgt", v30, c0_i32)
+        v32 = tt.splat(result=T.tensor(8, 4, T.i1, encoding=blocked2), src=v31)
+        v33 = tt.splat(result=T.tensor(1, 4, T.i32, encoding=blocked2), src=arg5)
+        v34 = arith.cmpi("slt", v23, v33)
+        v35 = tt.broadcast(result=T.tensor(8, 4, T.i1, encoding=blocked2), src=v34)
+        v36 = arith.andi(v32, v35)
+        v37 = tt.load(ptr=v28, mask=v36, other=cst_1)
+        v37.owner.attributes["OpIdx"] = amdgpu.OpIdxAttr.get(0)
+        v38 = tt.splat(
+            result=T.tensor(4, 8, tt.ptr(T.f32), encoding=blocked1), src=arg1
+        )
+        v39 = tt.make_range(result=T.tensor(4, T.i32, encoding=sliced2), start=0, end=4)
+        v40 = tt.expand_dims(src=v39, axis=1)
+        v41 = tt.splat(result=T.tensor(4, 1, T.i32, encoding=blocked1), src=arg8)
+        v42 = arith.muli(v40, v41)
+        v43 = tt.broadcast(result=T.tensor(4, 8, T.i32, encoding=blocked1), src=v42)
+        v44 = arith.divsi(v5, v9)
+        v45 = arith.muli(v44, c8_i32)
+        v46 = tt.splat(result=T.tensor(8, T.i32, encoding=sliced3), src=v45)
+        v47 = tt.make_range(result=T.tensor(8, T.i32, encoding=sliced3), start=0, end=8)
+        v48 = arith.addi(v46, v47)
+        v49 = tt.splat(result=T.tensor(8, T.i32, encoding=sliced3), src=arg4)
+        v50 = arith.remsi(v48, v49)
+        v51 = tt.expand_dims(src=v50, axis=0)
+        v52 = tt.splat(result=T.tensor(1, 8, T.i32, encoding=blocked1), src=arg9)
+        v53 = arith.muli(v51, v52)
+        v54 = tt.broadcast(result=T.tensor(4, 8, T.i32, encoding=blocked1), src=v53)
+        v55 = arith.addi(v43, v54)
+        v56 = tt.addptr(
+            result=T.tensor(4, 8, tt.ptr(T.f32), encoding=blocked1), ptr=v38, offset=v55
+        )
+        v57 = tt.splat(result=T.tensor(4, 8, T.i1, encoding=blocked1), src=v31)
+        v58 = tt.splat(result=T.tensor(4, 1, T.i32, encoding=blocked1), src=arg5)
+        v59 = arith.cmpi("slt", v40, v58)
+        v60 = tt.broadcast(result=T.tensor(4, 8, T.i1, encoding=blocked1), src=v59)
+        v61 = arith.andi(v57, v60)
+        v62 = tt.load(ptr=v56, mask=v61, other=cst_0)
+        v62.owner.attributes["OpIdx"] = amdgpu.OpIdxAttr.get(1)
+        v63 = tt.make_range(result=T.tensor(8, T.i32, encoding=sliced1), start=0, end=8)
+        v64 = tt.splat(result=T.tensor(8, T.i32, encoding=sliced1), src=v45)
+        v65 = arith.addi(v64, v63)
+        v66 = arith.muli(arg7, c4_i32)
+        v67 = tt.splat(result=T.tensor(8, 4, T.i32, encoding=blocked2), src=v66)
+        v68 = arith.muli(arg8, c4_i32)
+        v69 = tt.splat(result=T.tensor(4, 8, T.i32, encoding=blocked1), src=v68)
+        v70 = ttg.local_alloc(result=memdesc)
+        v71 = ttg.local_alloc(result=memdesc1)
+        v72 = ttg.memdesc_subview(
+            result=memdesc2, src=v70, offsets=[c0_i32, c0_i32, c0_i32]
+        )
+        ttg.local_store_2 = ttg.local_store(src=v37, dst=v72)
+        ttg.local_store_2.attributes["OpIdx"] = amdgpu.OpIdxAttr.get(0)
+        v73 = ttg.memdesc_subview(
+            result=memdesc3, src=v71, offsets=[c0_i32, c0_i32, c0_i32]
+        )
+        ttg.local_store_3 = ttg.local_store(src=v62, dst=v73)
+        ttg.local_store_3.attributes["OpIdx"] = amdgpu.OpIdxAttr.get(1)
+        v74 = arith.subi(v30, c1_i32)
+        for (
+            arg12,
+            [arg13, arg14, arg15, arg16, arg17, arg18],
+            [v75_0, v75_1, v75_2, v75_3, v75_4, v75_5],
+        ) in scf.range_(
+            c0_i32, v74, c1_i32, iter_args=[cst, v28, v56, c0_i32, v72, v73]
+        ):
+            v100 = tt.addptr(
+                result=T.tensor(8, 4, tt.ptr(T.f32), encoding=blocked2),
+                ptr=arg14,
+                offset=v67,
+            )
+            v101 = arith.addi(arg12, c1_i32)
+            v102 = arith.muli(v101, c4_i32)
+            v103 = arith.subi(arg5, v102)
+            v104 = tt.splat(result=T.tensor(1, 4, T.i32, encoding=blocked2), src=v103)
+            v105 = arith.cmpi("slt", v23, v104)
+            v106 = tt.broadcast(
+                result=T.tensor(8, 4, T.i1, encoding=blocked2), src=v105
+            )
+            v107 = tt.load(ptr=v100, mask=v106, other=cst_1)
+            v107.owner.attributes["OpIdx"] = amdgpu.OpIdxAttr.get(0)
+            v108 = tt.addptr(
+                result=T.tensor(4, 8, tt.ptr(T.f32), encoding=blocked1),
+                ptr=arg15,
+                offset=v69,
+            )
+            v109 = tt.splat(result=T.tensor(4, 1, T.i32, encoding=blocked1), src=v103)
+            v110 = arith.cmpi("slt", v40, v109)
+            v111 = tt.broadcast(
+                result=T.tensor(4, 8, T.i1, encoding=blocked1), src=v110
+            )
+            v112 = tt.load(ptr=v108, mask=v111, other=cst_0)
+            v112.owner.attributes["OpIdx"] = amdgpu.OpIdxAttr.get(1)
+            v113 = ttg.local_load(
+                result=T.tensor(
+                    8,
+                    4,
+                    T.f32,
+                    encoding=ttg.DotOperandEncodingAttr.get(op_idx=0, parent=blocked),
+                ),
+                src=arg17,
+            )
+            v114 = ttg.local_load(
+                result=T.tensor(
+                    4,
+                    8,
+                    T.f32,
+                    encoding=ttg.DotOperandEncodingAttr.get(op_idx=1, parent=blocked),
+                ),
+                src=arg18,
+            )
+            v115 = tt.dot(a=v113, b=v114, c=arg13)
+            v116 = arith.addi(arg16, c1_i32)
+            v117 = arith.cmpi("slt", v116, c1_i32)
+            v118 = arith.select(condition=v117, true_value=v116, false_value=c0_i32)
+            v119 = ttg.memdesc_subview(
+                result=memdesc2, src=v70, offsets=[v118, c0_i32, c0_i32]
+            )
+            ttg.local_store_6 = ttg.local_store(src=v107, dst=v119)
+            ttg.local_store_6.attributes["OpIdx"] = amdgpu.OpIdxAttr.get(0)
+            v120 = ttg.memdesc_subview(
+                result=memdesc3, src=v71, offsets=[v118, c0_i32, c0_i32]
+            )
+            ttg.local_store_7 = ttg.local_store(src=v112, dst=v120)
+            ttg.local_store_7.attributes["OpIdx"] = amdgpu.OpIdxAttr.get(1)
+
+            yield v115, v100, v108, v118, v119, v120
+
+        v76 = arith.cmpi("sge", v30, c1_i32)
+        v77 = ttg.local_load(
+            result=T.tensor(
+                8,
+                4,
+                T.f32,
+                encoding=ttg.DotOperandEncodingAttr.get(op_idx=0, parent=blocked),
+            ),
+            src=v75_4,
+        )
+        v78 = ttg.local_load(
+            result=T.tensor(
+                4,
+                8,
+                T.f32,
+                encoding=ttg.DotOperandEncodingAttr.get(op_idx=1, parent=blocked),
+            ),
+            src=v75_5,
+        )
+
+        if v76:
+            v100 = tt.dot(a=v77, b=v78, c=v75_0)
+            v79 = yield v100
+        else:
+            v79 = yield v75_0
+
+        v80 = arith.select(condition=v76, true_value=v79, false_value=v75_0)
+        ttg.local_dealloc(src=v70)
+        ttg.local_dealloc(src=v71)
+        v81 = tt.expand_dims(src=v15, axis=1)
+        v82 = tt.splat(result=T.tensor(8, 1, T.i32, encoding=blocked2), src=arg10)
+        v83 = arith.muli(v82, v81)
+        v84 = tt.splat(
+            result=T.tensor(8, 1, tt.ptr(T.f32), encoding=blocked2), src=arg2
+        )
+        v85 = tt.addptr(
+            result=T.tensor(8, 1, tt.ptr(T.f32), encoding=blocked2), ptr=v84, offset=v83
+        )
+        v86 = tt.expand_dims(src=v65, axis=0)
+        v87 = tt.splat(result=T.tensor(1, 8, T.i32, encoding=blocked2), src=arg11)
+        v88 = arith.muli(v87, v86)
+        v89 = tt.broadcast(
+            result=T.tensor(8, 8, tt.ptr(T.f32), encoding=blocked2), src=v85
+        )
+        v90 = tt.broadcast(result=T.tensor(8, 8, T.i32, encoding=blocked2), src=v88)
+        v91 = tt.addptr(
+            result=T.tensor(8, 8, tt.ptr(T.f32), encoding=blocked2), ptr=v89, offset=v90
+        )
+        v92 = tt.splat(result=T.tensor(8, 1, T.i32, encoding=blocked2), src=arg3)
+        v93 = arith.cmpi("slt", v81, v92)
+        v94 = tt.splat(result=T.tensor(1, 8, T.i32, encoding=blocked2), src=arg4)
+        v95 = arith.cmpi("slt", v86, v94)
+        v96 = tt.broadcast(result=T.tensor(8, 8, T.i1, encoding=blocked2), src=v93)
+        v97 = tt.broadcast(result=T.tensor(8, 8, T.i1, encoding=blocked2), src=v95)
+        v98 = arith.andi(v96, v97)
+        v99 = ttg.convert_layout(
+            result=T.tensor(8, 8, T.f32, encoding=blocked2), src=v80
+        )
+        tt.store(ptr=v91, value=v99, mask=v98)
+
+        tt.return_(srcs=[])
+
+    matmul_kernel_3.emit()
+    ctx.module.operation.verify()
+    triton_mod = unwrap_c_module_op(ctx.module.operation)
+
+    props = hip.hipDeviceProp_t()
+    hip_check(hip.hipGetDeviceProperties(props, 0))
+    arch = props.gcnArchName.decode()
+    options = backend.parse_options(
+        {"arch": arch, "waves_per_eu": WAVES_PER_EU, "num_warps": NUM_WARPS}
+    )
+
+    hsaco, metadata = backend.compile(
+        triton_mod,
+        options=options,
+        dump_ir=True,
+        ir_dump_dir=Path(__file__).parent / f"matmul_kernel_3_group_size_{GS_M}",
+    )
+
+    module = hip_check(hip.hipModuleLoadData(hsaco))
+    function = hip_check(
+        hip.hipModuleGetFunction(module, metadata["name"].encode())
+    ).as_c_void_p()
+
+    # kernel launch
+
+    a_h = np.random.rand(M, K).astype(dtype=np.float32)
+    b_h = np.random.rand(K, N).astype(dtype=np.float32)
+    c_h = -3 * np.ones((M, N), dtype=np.float32)
+
+    a_num_bytes = a_h.size * a_h.itemsize
+    b_num_bytes = b_h.size * b_h.itemsize
+    c_num_bytes = c_h.size * c_h.itemsize
+
+    a_d = hip_check(hip.hipMalloc(a_num_bytes)).configure(
+        typestr="float32", shape=(M, K)
+    )
+    b_d = hip_check(hip.hipMalloc(b_num_bytes)).configure(
+        typestr="float32", shape=(K, N)
+    )
+    c_d = hip_check(hip.hipMalloc(c_num_bytes)).configure(
+        typestr="float32", shape=(M, N)
+    )
+
+    hip_check(
+        hip.hipMemcpy(a_d, a_h, a_num_bytes, hip.hipMemcpyKind.hipMemcpyHostToDevice)
+    )
+    hip_check(
+        hip.hipMemcpy(b_d, b_h, b_num_bytes, hip.hipMemcpyKind.hipMemcpyHostToDevice)
+    )
+    hip_check(
+        hip.hipMemcpy(c_d, c_h, c_num_bytes, hip.hipMemcpyKind.hipMemcpyHostToDevice)
+    )
+
+    stream = 0
+    gridX = math.ceil(M / BS_M) * math.ceil(N / BS_N)
+    gridY = 1
+    gridZ = 1
+    shared_memory = metadata["shared"]
+
+    launch(
+        function,
+        gridX,
+        gridY,
+        gridZ,
+        stream,
+        options.warp_size,
+        options.num_warps,
+        shared_memory,
+        a_d,
+        b_d,
+        c_d,
+        M,
+        N,
+        K,
+        *(np.array(a_h.strides) // a_h.itemsize).tolist(),
+        *(np.array(b_h.strides) // b_h.itemsize).tolist(),
+        *(np.array(c_h.strides) // c_h.itemsize).tolist(),
+    )
+
+    correct = a_h @ b_h
+    assert np.allclose(c_h, -3.0)
+    assert not np.allclose(correct, c_h)
+    hip_check(
+        hip.hipMemcpy(c_h, c_d, c_num_bytes, hip.hipMemcpyKind.hipMemcpyDeviceToHost)
+    )
+    assert np.allclose(c_h, correct)
+
+
 if __name__ == "__main__":
     backend = backend_()
     with mlir_mod_ctx(allow_unregistered_dialects=True) as ctx:
@@ -1288,3 +1742,5 @@ if __name__ == "__main__":
             test_inline_mod(ctx, backend, ac)
         with mlir_mod_ctx(allow_unregistered_dialects=True) as ctx:
             test_inline_mod_ttpp(ctx, backend, ac)
+        with mlir_mod_ctx(allow_unregistered_dialects=True) as ctx:
+            test_inline_mod_ttg(ctx, backend, ac)

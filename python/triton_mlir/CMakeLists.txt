@@ -261,6 +261,22 @@ eudsl_tblgen(eudsl_TritonGPUAttrDefs
     "${CMAKE_CURRENT_SOURCE_DIR}/triton_mlir"
   KIND
     MlirAttribute
+  EXCLUDE
+    BlockedEncodingAttr
+    SliceEncodingAttr
+    SwizzledSharedEncodingAttr
+)
+
+eudsl_tblgen(eudsl_TritonAMDGPUGPUAttrDefs
+  TD_FILE
+    "../../third_party/amd/include/Dialect/TritonAMDGPU/IR/TritonAMDGPUAttrDefs.td"
+  OUTPUT_DIRECTORY
+    "${CMAKE_CURRENT_SOURCE_DIR}/triton_mlir"
+  KIND
+    MlirAttribute
+  EXCLUDE
+    TritonAMDGPU_SchedHintVariantAttr
+    TritonAMDGPU_InstCounter
 )
 
 eudsl_tblgen(eudsl_TritonGPUTypes
