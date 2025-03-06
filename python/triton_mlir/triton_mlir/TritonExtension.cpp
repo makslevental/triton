@@ -80,6 +80,7 @@
 #include <iostream>
 #include <nanobind/make_iterator.h>
 #include <nanobind/nanobind.h>
+#include <nanobind/stl/optional.h>
 #include <nanobind/stl/unique_ptr.h>
 #include <numeric>
 #include <unordered_set>
@@ -2022,17 +2023,59 @@ void init_triton_ir(nb::module_ &m) {
 namespace eudsl {
 using namespace mlir;
 using namespace triton::gpu;
+using namespace triton::amdgpu;
+#include "BlockedEncodingAttr_decls_defns.cpp.inc"
+#include "SliceEncodingAttr_decls_defns.cpp.inc"
+#include "SwizzledSharedEncodingAttr_decls_defns.h.inc"
+#include "TritonAMDGPUAttrDefs_MlirAttribute_decls.h.inc"
+#include "TritonAMDGPUAttrDefs_MlirAttribute_defns.cpp.inc"
 #include "TritonGPUAttrDefs_MlirAttribute_decls.h.inc"
 #include "TritonGPUAttrDefs_MlirAttribute_defns.cpp.inc"
 #include "TritonGPUTypes_MlirType_decls.h.inc"
 #include "TritonGPUTypes_MlirType_defns.cpp.inc"
+
+MlirAttribute mlirSharedMemorySpaceAttributeGet(MlirContext mlirContext) {
+  mlir::MLIRContext *context = unwrap(mlirContext);
+  return wrap(SharedMemorySpaceAttr::get(context));
+}
+
+MlirTypeID mlirSharedMemorySpaceAttrGetTypeID() {
+  return wrap(SharedMemorySpaceAttr::getTypeID());
+}
+
+bool isaMlirSharedMemorySpaceAttr(MlirAttribute thing) {
+  return isa<SharedMemorySpaceAttr>(unwrap(thing));
+}
 } // namespace eudsl
 
-void populateTTGialect(nb::module_ &m) {
-  using namespace mlir::triton::gpu;
+void populateTTGDialect(nb::module_ &m) {
   using namespace eudsl;
+  using namespace mlir::triton::gpu;
+  using namespace triton::amdgpu;
+#include "BlockedEncodingAttr_nbclasses.cpp.inc"
+
+#include "SliceEncodingAttr_nbclasses.cpp.inc"
+
+#include "SwizzledSharedEncodingAttr_nbclasses.cpp.inc"
 #include "TritonGPUAttrDefs_MlirAttribute_nbclasses.cpp.inc"
 #include "TritonGPUTypes_MlirType_nbclasses.cpp.inc"
+
+  auto nbSharedMemorySpaceAttr = mlir_attribute_subclass(
+      m, "SharedMemorySpaceAttr", isaMlirSharedMemorySpaceAttr,
+      mlirSharedMemorySpaceAttrGetTypeID);
+  nbSharedMemorySpaceAttr.def_staticmethod(
+      "get",
+      [](MlirContext context) {
+        return mlirSharedMemorySpaceAttributeGet(context);
+      },
+      "context"_a = nb::none());
+}
+
+void populateAMDGPUDialect(nb::module_ &m) {
+  using namespace eudsl;
+  using namespace mlir::triton::gpu;
+  using namespace triton::amdgpu;
+#include "TritonAMDGPUAttrDefs_MlirAttribute_nbclasses.cpp.inc"
 }
 
 const char *HERE = "HERE";
@@ -2057,6 +2100,7 @@ NB_MODULE(_triton, m) {
   init_triton_llvm(llvm);
   auto amd = m.def_submodule("amd");
   init_triton_amd(amd);
+
   auto passes = m.def_submodule("passes");
   init_triton_passes(passes);
 
@@ -2064,7 +2108,10 @@ NB_MODULE(_triton, m) {
   populateTTDialect(ttDialect);
 
   auto ttgDialect = m.def_submodule("ttg");
-  populateTTGialect(ttgDialect);
+  populateTTGDialect(ttgDialect);
+
+  auto amdgpuDialect = m.def_submodule("amdgpu");
+  populateAMDGPUDialect(amdgpuDialect);
 
   m.def(
       "unwrap_c_context", [](MlirContext context) { return unwrap(context); },

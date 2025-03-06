@@ -60,21 +60,23 @@ def jit(
 _make_range = make_range
 
 
-def make_range(start, end, *, loc=None, ip=None):
+def make_range(start, end, *, result=None, loc=None, ip=None):
     if loc is None:
         loc = get_user_code_loc()
-    result_type = _T.tensor(end - start, _T.i32())
-    return _make_range(result_type, start, end, loc=loc, ip=ip)
+    if result is None:
+        result = _T.tensor(end - start, _T.i32())
+    return _make_range(result, start, end, loc=loc, ip=ip)
 
 
 _splat = splat
 
 
-def splat(src: Value, sizes: tuple[int], *, loc=None, ip=None):
+def splat(src: Value, sizes: tuple[int] = None, *, result=None, loc=None, ip=None):
     if loc is None:
         loc = get_user_code_loc()
-    result_type = _T.tensor(*sizes, src.type)
-    return _splat(result_type, src, loc=loc, ip=ip)
+    if result is None:
+        result = _T.tensor(*sizes, src.type)
+    return _splat(result, src, loc=loc, ip=ip)
 
 
 def zeros(shape: Sequence[int], dtype: Optional[Type] = None):
@@ -86,10 +88,12 @@ def zeros(shape: Sequence[int], dtype: Optional[Type] = None):
 _broadcast = broadcast
 
 
-def broadcast(src: Tensor, shape: list[int], *, loc=None, ip=None):
+def broadcast(src: Tensor, shape: list[int] = None, *, result=None, loc=None, ip=None):
     if loc is None:
         loc = get_user_code_loc()
-    return _broadcast(RankedTensorType.get(shape, src.dtype), src, loc=loc, ip=ip)
+    if result is None:
+        result = RankedTensorType.get(shape, src.dtype)
+    return _broadcast(result, src, loc=loc, ip=ip)
 
 
 _expand_dims = expand_dims
@@ -240,6 +244,8 @@ def dot(
     b,
     *,
     c=None,
+    input_precision=None,
+    max_num_imprecise_acc=None,
     loc=None,
     ip=None,
 ):
@@ -257,6 +263,8 @@ def dot(
         a,
         b,
         c,
+        input_precision=input_precision,
+        max_num_imprecise_acc=max_num_imprecise_acc,
         loc=loc,
         ip=ip,
     )
@@ -269,6 +277,7 @@ def addptr(
     ptr,
     offset: Tensor | int,
     *,
+    result=None,
     loc=None,
     ip=None,
 ):
@@ -286,8 +295,9 @@ def addptr(
         assert (
             ptr.shape == offset.shape
         ), f"'addptr' op all non-scalar operands/results must have the same shape and base type: {ptr=} {offset=}"
-    result_type = ptr.type
-    return _addptr(result_type, ptr, offset, loc=loc, ip=ip)
+    if result is None:
+        result = ptr.type
+    return _addptr(result, ptr, offset, loc=loc, ip=ip)
 
 
 def ptr(pointee_type, address_space=1):
