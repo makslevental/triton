@@ -38,6 +38,14 @@ _T.tensor = tensor
 
 class T:
     @_classproperty
+    def i1(cls):
+        return _PlusPtr(_T.bool())
+
+    @_classproperty
+    def i8(cls):
+        return _PlusPtr(_T.i8())
+
+    @_classproperty
     def i16(cls):
         return _PlusPtr(_T.i16())
 

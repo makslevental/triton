@@ -2,4 +2,9 @@
 #  See https://llvm.org/LICENSE.txt for license information.
 #  SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+# noinspection PyUnresolvedReferences
 from ._amdgpu_ops_gen import *
+# noinspection PyUnresolvedReferences
+from ._amdgpu_enum_gen import *
+# noinspection PyUnresolvedReferences
+from .._mlir_libs._triton.amdgpu import *
