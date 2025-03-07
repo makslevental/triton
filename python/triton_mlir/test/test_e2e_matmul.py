@@ -10,7 +10,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 from triton_mlir.compiler import unwrap_c_module_op
-from triton_mlir.dialects import tt, scf, builtin, ttg, amdgpu
+from triton_mlir.dialects import tt, scf, builtin, ttg, amdgpu, ttpp
 from triton_mlir.extras.ast.canonicalize import canonicalize
 
 # noinspection PyUnresolvedReferences
@@ -1294,11 +1294,11 @@ def test_inline_mod_ttpp(ctx, backend, autotune_config):
 def test_inline_mod_ttg(ctx, backend, autotune_config):
     from hip import hip
 
-    M, K, N = 16, 16, 16
+    M, K, N = 128, 128, 128
     BS_M = autotune_config["BLOCK_SIZE_M"]
     BS_N = autotune_config["BLOCK_SIZE_N"]
     BS_K = autotune_config["BLOCK_SIZE_K"]
-    GS_M = autotune_config["GROUP_SIZE_M"]
+    GROUP_SIZE_M = autotune_config["GROUP_SIZE_M"]
     WAVES_PER_EU = autotune_config["WAVES_PER_EU"]
     NUM_WARPS = autotune_config["NUM_WARPS"]
 
@@ -1368,275 +1368,227 @@ def test_inline_mod_ttg(ctx, backend, autotune_config):
         mutable_memory=True,
         alloc_shape=[4, 8],
     )
+    dotop0 = ttg.DotOperandEncodingAttr.get(op_idx=0, parent=blocked)
+    dotop1 = ttg.DotOperandEncodingAttr.get(op_idx=1, parent=blocked)
 
     @tt.jit(
         arg_attrs=ArrayAttr.parse(
             "[{tt.divisibility = 16 : i32}, {tt.divisibility = 16 : i32}, {tt.divisibility = 16 : i32}, {}, {}, {}, {}, {}, {}, {}, {}, {}]"
-        ),
-        function_type=T.function(
-            inputs=[
-                tt.ptr(T.f32),
-                tt.ptr(T.f32),
-                tt.ptr(T.f32),
-                T.i32,
-                T.i32,
-                T.i32,
-                T.i32,
-                T.i32,
-                T.i32,
-                T.i32,
-                T.i32,
-                T.i32,
-            ],
-            results=[],
-        ),
-        noinline=False,
-        sym_name="matmul_kernel",
-        sym_visibility="public",
+        )
     )
     @canonicalize(using=scf.canonicalizer)
     def matmul_kernel_3(
-        arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11
+        a_ptr: +T.f32,
+        b_ptr: +T.f32,
+        c_ptr: +T.f32,
+        M: T.i32,
+        N: T.i32,
+        K: T.i32,
+        stride_am: T.i32,
+        stride_ak: T.i32,
+        stride_bk: T.i32,
+        stride_bn: T.i32,
+        stride_cm: T.i32,
+        stride_cn: T.i32,
     ):
         cst = arith.constant(
-            np.full([8, 8], 0.0, np.float32), T.tensor(8, 8, T.f32, encoding=blocked)
-        )
-        cst_0 = arith.constant(
-            np.full([4, 8], 0.0, np.float32), T.tensor(4, 8, T.f32, encoding=blocked1)
-        )
-        cst_1 = arith.constant(
-            np.full([8, 4], 0.0, np.float32), T.tensor(8, 4, T.f32, encoding=blocked2)
+            np.full([BS_M, BS_N], 0.0, np.float32),
+            T.tensor(BS_M, BS_N, T.f32, encoding=blocked),
         )
         c0_i32 = arith.constant(0, T.i32)
-        c1_i32 = arith.constant(1, T.i32)
-        c3_i32 = arith.constant(3, T.i32)
-        c4_i32 = arith.constant(4, T.i32)
-        c7_i32 = arith.constant(7, T.i32)
-        c8_i32 = arith.constant(8, T.i32)
-        v0 = tt.splat(result=T.tensor(8, 4, tt.ptr(T.f32), encoding=blocked2), src=arg0)
-        v1 = tt.get_program_id(axis=0)
-        v2 = arith.addi(arg4, c7_i32)
-        v3 = arith.divsi(v2, c8_i32)
-        v4 = arith.divsi(v1, v3)
-        v5 = arith.remsi(v1, v3)
-        v6 = arith.addi(arg3, c7_i32)
-        v7 = arith.divsi(v6, c8_i32)
-        v8 = arith.subi(v7, v4)
-        v9 = arith.minsi(v8, c1_i32)
-        v10 = arith.remsi(v5, v9)
-        v11 = arith.addi(v4, v10)
-        v12 = arith.muli(v11, c8_i32)
-        v13 = tt.splat(result=T.tensor(8, T.i32, encoding=sliced), src=v12)
-        v14 = tt.make_range(result=T.tensor(8, T.i32, encoding=sliced), start=0, end=8)
-        v15 = arith.addi(v13, v14)
-        v16 = tt.splat(result=T.tensor(8, T.i32, encoding=sliced), src=arg3)
-        v17 = arith.remsi(v15, v16)
-        v18 = tt.expand_dims(src=v17, axis=1)
-        v19 = tt.splat(result=T.tensor(8, 1, T.i32, encoding=blocked2), src=arg6)
-        v20 = arith.muli(v18, v19)
-        v21 = tt.broadcast(result=T.tensor(8, 4, T.i32, encoding=blocked2), src=v20)
-        v22 = tt.make_range(result=T.tensor(4, T.i32, encoding=sliced1), start=0, end=4)
-        v23 = tt.expand_dims(src=v22, axis=0)
-        v24 = tt.splat(result=T.tensor(1, 4, T.i32, encoding=blocked2), src=arg7)
-        v25 = arith.muli(v23, v24)
-        v26 = tt.broadcast(result=T.tensor(8, 4, T.i32, encoding=blocked2), src=v25)
-        v27 = arith.addi(v21, v26)
-        v28 = tt.addptr(
-            result=T.tensor(8, 4, tt.ptr(T.f32), encoding=blocked2), ptr=v0, offset=v27
+
+        a_ptr = tt.splat(
+            result=T.tensor(BS_M, BS_K, +T.f32, encoding=blocked2), src=a_ptr
         )
-        v29 = arith.addi(arg5, c3_i32)
-        v30 = arith.divsi(v29, c4_i32)
-        v31 = arith.cmpi("sgt", v30, c0_i32)
-        v32 = tt.splat(result=T.tensor(8, 4, T.i1, encoding=blocked2), src=v31)
-        v33 = tt.splat(result=T.tensor(1, 4, T.i32, encoding=blocked2), src=arg5)
-        v34 = arith.cmpi("slt", v23, v33)
-        v35 = tt.broadcast(result=T.tensor(8, 4, T.i1, encoding=blocked2), src=v34)
-        v36 = arith.andi(v32, v35)
-        v37 = tt.load(ptr=v28, mask=v36, other=cst_1)
-        v37.owner.attributes["OpIdx"] = amdgpu.OpIdxAttr.get(0)
-        v38 = tt.splat(
-            result=T.tensor(4, 8, tt.ptr(T.f32), encoding=blocked1), src=arg1
+        b_ptr = tt.splat(
+            result=T.tensor(BS_K, BS_N, +T.f32, encoding=blocked1), src=b_ptr
         )
-        v39 = tt.make_range(result=T.tensor(4, T.i32, encoding=sliced2), start=0, end=4)
-        v40 = tt.expand_dims(src=v39, axis=1)
-        v41 = tt.splat(result=T.tensor(4, 1, T.i32, encoding=blocked1), src=arg8)
-        v42 = arith.muli(v40, v41)
-        v43 = tt.broadcast(result=T.tensor(4, 8, T.i32, encoding=blocked1), src=v42)
-        v44 = arith.divsi(v5, v9)
-        v45 = arith.muli(v44, c8_i32)
-        v46 = tt.splat(result=T.tensor(8, T.i32, encoding=sliced3), src=v45)
-        v47 = tt.make_range(result=T.tensor(8, T.i32, encoding=sliced3), start=0, end=8)
-        v48 = arith.addi(v46, v47)
-        v49 = tt.splat(result=T.tensor(8, T.i32, encoding=sliced3), src=arg4)
-        v50 = arith.remsi(v48, v49)
-        v51 = tt.expand_dims(src=v50, axis=0)
-        v52 = tt.splat(result=T.tensor(1, 8, T.i32, encoding=blocked1), src=arg9)
-        v53 = arith.muli(v51, v52)
-        v54 = tt.broadcast(result=T.tensor(4, 8, T.i32, encoding=blocked1), src=v53)
-        v55 = arith.addi(v43, v54)
-        v56 = tt.addptr(
-            result=T.tensor(4, 8, tt.ptr(T.f32), encoding=blocked1), ptr=v38, offset=v55
+        BLOCK_SIZE_M_ = arith.constant(BS_M, T.i32)
+        BLOCK_SIZE_N_ = arith.constant(BS_N, T.i32)
+        BLOCK_SIZE_K_ = arith.constant(BS_K, T.i32)
+        GROUP_SIZE_M_ = arith.constant(GROUP_SIZE_M, T.i32)
+
+        pid = tt.get_program_id(axis=0)
+        num_pid_m = arith.ceildivsi(M, BLOCK_SIZE_M_)
+        num_pid_n = arith.ceildivsi(N, BLOCK_SIZE_N_)
+        num_pid_in_group = GROUP_SIZE_M * num_pid_n
+        group_id = pid // num_pid_in_group
+        first_pid_m = group_id * GROUP_SIZE_M
+        group_size_m = arith.minsi(num_pid_m - first_pid_m, GROUP_SIZE_M_)
+        pid_m = first_pid_m + ((pid % num_pid_in_group) % group_size_m)
+        pid_n = (pid % num_pid_in_group) // group_size_m
+
+        pid_m_step = pid_m * BS_M + make_range(0, BS_M, encoding=sliced)
+        offs_am = pid_m_step % M
+        offs_bn = (pid_n * BS_N + make_range(0, BS_N, encoding=sliced3)) % N
+        offs_k_sliced1 = make_range(0, BS_K, encoding=sliced1)
+        a_ptrs = (
+            a_ptr + offs_am[:, None] * stride_am + offs_k_sliced1[None, :] * stride_ak
         )
-        v57 = tt.splat(result=T.tensor(4, 8, T.i1, encoding=blocked1), src=v31)
-        v58 = tt.splat(result=T.tensor(4, 1, T.i32, encoding=blocked1), src=arg5)
-        v59 = arith.cmpi("slt", v40, v58)
-        v60 = tt.broadcast(result=T.tensor(4, 8, T.i1, encoding=blocked1), src=v59)
-        v61 = arith.andi(v57, v60)
-        v62 = tt.load(ptr=v56, mask=v61, other=cst_0)
-        v62.owner.attributes["OpIdx"] = amdgpu.OpIdxAttr.get(1)
-        v63 = tt.make_range(result=T.tensor(8, T.i32, encoding=sliced1), start=0, end=8)
-        v64 = tt.splat(result=T.tensor(8, T.i32, encoding=sliced1), src=v45)
-        v65 = arith.addi(v64, v63)
-        v66 = arith.muli(arg7, c4_i32)
-        v67 = tt.splat(result=T.tensor(8, 4, T.i32, encoding=blocked2), src=v66)
-        v68 = arith.muli(arg8, c4_i32)
-        v69 = tt.splat(result=T.tensor(4, 8, T.i32, encoding=blocked1), src=v68)
+        offs_k_sliced2 = make_range(0, BS_K, encoding=sliced2)
+        b_ptrs = b_ptr + (
+            offs_k_sliced2[:, None] * stride_bk + offs_bn[None, :] * stride_bn
+        )
+
+        stop = arith.ceildivsi(K, BLOCK_SIZE_K_)
+
+        v32 = tt.splat(
+            result=T.tensor(BS_M, BS_K, T.i1, encoding=blocked2), src=stop > 0
+        )
+        a = tt.load(
+            ptr=a_ptrs,
+            mask=v32 & (offs_k_sliced1[None, :] < K),
+            other=0.0,
+            amdgpu_op_idx=0,
+        )
+
+        v57 = tt.splat(
+            result=T.tensor(BS_K, BS_N, T.i1, encoding=blocked1), src=stop > 0
+        )
+        b = tt.load(
+            ptr=b_ptrs,
+            mask=v57 & (offs_k_sliced2[:, None] < K),
+            other=0.0,
+            amdgpu_op_idx=1,
+        )
+
         v70 = ttg.local_alloc(result=memdesc)
         v71 = ttg.local_alloc(result=memdesc1)
         v72 = ttg.memdesc_subview(
             result=memdesc2, src=v70, offsets=[c0_i32, c0_i32, c0_i32]
         )
-        ttg.local_store_2 = ttg.local_store(src=v37, dst=v72)
+        ttg.local_store_2 = ttg.local_store(src=a, dst=v72)
         ttg.local_store_2.attributes["OpIdx"] = amdgpu.OpIdxAttr.get(0)
         v73 = ttg.memdesc_subview(
             result=memdesc3, src=v71, offsets=[c0_i32, c0_i32, c0_i32]
         )
-        ttg.local_store_3 = ttg.local_store(src=v62, dst=v73)
+        ttg.local_store_3 = ttg.local_store(src=b, dst=v73)
         ttg.local_store_3.attributes["OpIdx"] = amdgpu.OpIdxAttr.get(1)
-        v74 = arith.subi(v30, c1_i32)
+
+        step_ak = tt.splat(
+            result=T.tensor(BS_M, BS_K, T.i32, encoding=blocked2), src=stride_ak * BS_K
+        )
+        step_bk = tt.splat(
+            result=T.tensor(BS_K, BS_N, T.i32, encoding=blocked1), src=stride_bk * BS_K
+        )
         for (
-            arg12,
+            i,
             [arg13, arg14, arg15, arg16, arg17, arg18],
             [v75_0, v75_1, v75_2, v75_3, v75_4, v75_5],
         ) in scf.range_(
-            c0_i32, v74, c1_i32, iter_args=[cst, v28, v56, c0_i32, v72, v73]
+            0, stop - 1, 1, iter_args=[cst, a_ptrs, b_ptrs, c0_i32, v72, v73]
         ):
-            v100 = tt.addptr(
-                result=T.tensor(8, 4, tt.ptr(T.f32), encoding=blocked2),
-                ptr=arg14,
-                offset=v67,
+            v100 = arg14 + step_ak
+            v108 = arg15 + step_bk
+
+            mask1 = tt.broadcast(
+                result=T.tensor(BS_M, BS_K, T.i1, encoding=blocked2),
+                src=offs_k_sliced1[None, :] < K - (i + 1) * BS_K,
             )
-            v101 = arith.addi(arg12, c1_i32)
-            v102 = arith.muli(v101, c4_i32)
-            v103 = arith.subi(arg5, v102)
-            v104 = tt.splat(result=T.tensor(1, 4, T.i32, encoding=blocked2), src=v103)
-            v105 = arith.cmpi("slt", v23, v104)
-            v106 = tt.broadcast(
-                result=T.tensor(8, 4, T.i1, encoding=blocked2), src=v105
+            aa = tt.load(ptr=v100, mask=mask1, other=0.0, amdgpu_op_idx=0)
+
+            mask2 = tt.broadcast(
+                result=T.tensor(BS_K, BS_N, T.i1, encoding=blocked1),
+                src=offs_k_sliced2[:, None] < K - (i + 1) * BS_K,
             )
-            v107 = tt.load(ptr=v100, mask=v106, other=cst_1)
-            v107.owner.attributes["OpIdx"] = amdgpu.OpIdxAttr.get(0)
-            v108 = tt.addptr(
-                result=T.tensor(4, 8, tt.ptr(T.f32), encoding=blocked1),
-                ptr=arg15,
-                offset=v69,
-            )
-            v109 = tt.splat(result=T.tensor(4, 1, T.i32, encoding=blocked1), src=v103)
-            v110 = arith.cmpi("slt", v40, v109)
-            v111 = tt.broadcast(
-                result=T.tensor(4, 8, T.i1, encoding=blocked1), src=v110
-            )
-            v112 = tt.load(ptr=v108, mask=v111, other=cst_0)
-            v112.owner.attributes["OpIdx"] = amdgpu.OpIdxAttr.get(1)
-            v113 = ttg.local_load(
-                result=T.tensor(
-                    8,
-                    4,
-                    T.f32,
-                    encoding=ttg.DotOperandEncodingAttr.get(op_idx=0, parent=blocked),
-                ),
+            bb = tt.load(ptr=v108, mask=mask2, other=0.0, amdgpu_op_idx=1)
+
+            a = ttg.local_load(
+                result=T.tensor(BS_M, BS_K, T.f32, encoding=dotop0),
                 src=arg17,
             )
-            v114 = ttg.local_load(
-                result=T.tensor(
-                    4,
-                    8,
-                    T.f32,
-                    encoding=ttg.DotOperandEncodingAttr.get(op_idx=1, parent=blocked),
-                ),
+            b = ttg.local_load(
+                result=T.tensor(BS_K, BS_N, T.f32, encoding=dotop1),
                 src=arg18,
             )
-            v115 = tt.dot(a=v113, b=v114, c=arg13)
-            v116 = arith.addi(arg16, c1_i32)
-            v117 = arith.cmpi("slt", v116, c1_i32)
-            v118 = arith.select(condition=v117, true_value=v116, false_value=c0_i32)
+            v115 = tt.dot(a=a, b=b, c=arg13)
+            v118 = arith.select(
+                condition=arg16 + 1 < 1, true_value=arg16 + 1, false_value=c0_i32
+            )
             v119 = ttg.memdesc_subview(
                 result=memdesc2, src=v70, offsets=[v118, c0_i32, c0_i32]
             )
-            ttg.local_store_6 = ttg.local_store(src=v107, dst=v119)
+            ttg.local_store_6 = ttg.local_store(src=aa, dst=v119)
             ttg.local_store_6.attributes["OpIdx"] = amdgpu.OpIdxAttr.get(0)
             v120 = ttg.memdesc_subview(
                 result=memdesc3, src=v71, offsets=[v118, c0_i32, c0_i32]
             )
-            ttg.local_store_7 = ttg.local_store(src=v112, dst=v120)
+            ttg.local_store_7 = ttg.local_store(src=bb, dst=v120)
             ttg.local_store_7.attributes["OpIdx"] = amdgpu.OpIdxAttr.get(1)
 
             yield v115, v100, v108, v118, v119, v120
 
-        v76 = arith.cmpi("sge", v30, c1_i32)
-        v77 = ttg.local_load(
-            result=T.tensor(
-                8,
-                4,
-                T.f32,
-                encoding=ttg.DotOperandEncodingAttr.get(op_idx=0, parent=blocked),
-            ),
-            src=v75_4,
+        a = ttg.local_load(
+            result=T.tensor(BS_M, BS_K, T.f32, encoding=dotop0), src=v75_4
         )
-        v78 = ttg.local_load(
-            result=T.tensor(
-                4,
-                8,
-                T.f32,
-                encoding=ttg.DotOperandEncodingAttr.get(op_idx=1, parent=blocked),
-            ),
-            src=v75_5,
+        b = ttg.local_load(
+            result=T.tensor(BS_K, BS_N, T.f32, encoding=dotop1), src=v75_5
         )
 
-        if v76:
-            v100 = tt.dot(a=v77, b=v78, c=v75_0)
+        if stop >= 1:
+            v100 = tt.dot(a=a, b=b, c=v75_0)
             v79 = yield v100
         else:
             v79 = yield v75_0
 
-        v80 = arith.select(condition=v76, true_value=v79, false_value=v75_0)
         ttg.local_dealloc(src=v70)
         ttg.local_dealloc(src=v71)
-        v81 = tt.expand_dims(src=v15, axis=1)
-        v82 = tt.splat(result=T.tensor(8, 1, T.i32, encoding=blocked2), src=arg10)
-        v83 = arith.muli(v82, v81)
+        v81 = tt.expand_dims(src=pid_m_step, axis=1)
+        v82 = tt.splat(
+            result=T.tensor(BS_M, GROUP_SIZE_M, T.i32, encoding=blocked2), src=stride_cm
+        )
         v84 = tt.splat(
-            result=T.tensor(8, 1, tt.ptr(T.f32), encoding=blocked2), src=arg2
+            result=T.tensor(BS_M, GROUP_SIZE_M, +T.f32, encoding=blocked2),
+            src=c_ptr,
         )
         v85 = tt.addptr(
-            result=T.tensor(8, 1, tt.ptr(T.f32), encoding=blocked2), ptr=v84, offset=v83
+            result=T.tensor(BS_M, GROUP_SIZE_M, +T.f32, encoding=blocked2),
+            ptr=v84,
+            offset=v82 * v81,
         )
-        v86 = tt.expand_dims(src=v65, axis=0)
-        v87 = tt.splat(result=T.tensor(1, 8, T.i32, encoding=blocked2), src=arg11)
-        v88 = arith.muli(v87, v86)
+
+        pid_n_step = pid_n * BS_N + make_range(0, BS_N, encoding=sliced1)
+        v86 = tt.expand_dims(src=pid_n_step, axis=0)
+        v87 = tt.splat(
+            result=T.tensor(GROUP_SIZE_M, BS_N, T.i32, encoding=blocked2), src=stride_cn
+        )
+        v88 = v87 * v86
         v89 = tt.broadcast(
-            result=T.tensor(8, 8, tt.ptr(T.f32), encoding=blocked2), src=v85
+            result=T.tensor(BS_M, BS_N, +T.f32, encoding=blocked2), src=v85
         )
-        v90 = tt.broadcast(result=T.tensor(8, 8, T.i32, encoding=blocked2), src=v88)
+        v90 = tt.broadcast(
+            result=T.tensor(BS_M, BS_N, T.i32, encoding=blocked2), src=v88
+        )
         v91 = tt.addptr(
-            result=T.tensor(8, 8, tt.ptr(T.f32), encoding=blocked2), ptr=v89, offset=v90
+            result=T.tensor(BS_M, BS_N, +T.f32, encoding=blocked2),
+            ptr=v89,
+            offset=v90,
         )
-        v92 = tt.splat(result=T.tensor(8, 1, T.i32, encoding=blocked2), src=arg3)
-        v93 = arith.cmpi("slt", v81, v92)
-        v94 = tt.splat(result=T.tensor(1, 8, T.i32, encoding=blocked2), src=arg4)
-        v95 = arith.cmpi("slt", v86, v94)
-        v96 = tt.broadcast(result=T.tensor(8, 8, T.i1, encoding=blocked2), src=v93)
-        v97 = tt.broadcast(result=T.tensor(8, 8, T.i1, encoding=blocked2), src=v95)
-        v98 = arith.andi(v96, v97)
+
+        v92 = tt.splat(
+            result=T.tensor(BS_M, GROUP_SIZE_M, T.i32, encoding=blocked2), src=M
+        )
+        v94 = tt.splat(
+            result=T.tensor(GROUP_SIZE_M, BS_N, T.i32, encoding=blocked2), src=N
+        )
+        v96 = tt.broadcast(
+            result=T.tensor(BS_M, BS_N, T.i1, encoding=blocked2), src=v81 < v92
+        )
+        v97 = tt.broadcast(
+            result=T.tensor(BS_M, BS_N, T.i1, encoding=blocked2), src=v86 < v94
+        )
+        v80 = arith.select(condition=stop >= 1, true_value=v79, false_value=v75_0)
         v99 = ttg.convert_layout(
-            result=T.tensor(8, 8, T.f32, encoding=blocked2), src=v80
+            result=T.tensor(BS_M, BS_N, T.f32, encoding=blocked2), src=v80
         )
+        v98 = v96 & v97
         tt.store(ptr=v91, value=v99, mask=v98)
 
         tt.return_(srcs=[])
 
     matmul_kernel_3.emit()
     ctx.module.operation.verify()
+    # print(ctx.module)
     triton_mod = unwrap_c_module_op(ctx.module.operation)
 
     props = hip.hipDeviceProp_t()
@@ -1650,7 +1602,8 @@ def test_inline_mod_ttg(ctx, backend, autotune_config):
         triton_mod,
         options=options,
         dump_ir=True,
-        ir_dump_dir=Path(__file__).parent / f"matmul_kernel_3_group_size_{GS_M}",
+        ir_dump_dir=Path(__file__).parent
+        / f"matmul_kernel_3_group_size_{GROUP_SIZE_M}",
     )
 
     module = hip_check(hip.hipModuleLoadData(hsaco))

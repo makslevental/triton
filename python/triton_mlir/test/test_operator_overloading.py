@@ -184,8 +184,6 @@ def test_matmul(ctx: MLIRContext):
         pid_m = first_pid_m + (pid % group_size_m)
         pid_n = (pid % num_pid_in_group) // group_size_m
 
-        # offs_am = (pid_m * BLOCK_SIZE_M + tt.make_range(0, BLOCK_SIZE_M)) % M
-        # offs_bn = (pid_n * BLOCK_SIZE_N + tt.make_range(0, BLOCK_SIZE_N)) % N
         offs_am = pid_m * BLOCK_SIZE_M + tt.make_range(0, BLOCK_SIZE_M)
         offs_bn = pid_n * BLOCK_SIZE_N + tt.make_range(0, BLOCK_SIZE_N)
         offs_k = tt.make_range(0, BLOCK_SIZE_K)
@@ -281,15 +279,15 @@ def test_matmul(ctx: MLIRContext):
           %59 = arith.subi %arg5, %58 : i32
           %60 = tt.splat %59 : i32 -> tensor<1x16xi32>
           %61 = arith.cmpi slt, %21, %60 : tensor<1x16xi32>
+          %62 = tt.broadcast %61 : tensor<1x16xi1> -> tensor<16x16xi1>
+          %63 = tt.load %28, %62, %cst : tensor<16x16x!tt.ptr<f32>>
+          %64 = tt.splat %59 : i32 -> tensor<16x1xi32>
+          %65 = arith.cmpi slt, %29, %64 : tensor<16x1xi32>
+          %66 = tt.broadcast %65 : tensor<16x1xi1> -> tensor<16x16xi1>
+          %67 = tt.load %39, %66, %cst : tensor<16x16x!tt.ptr<f32>>
           %cst_0 = arith.constant 0.000000e+00 : f32
-          %62 = tt.splat %cst_0 : f32 -> tensor<16x16xf32>
-          %63 = tt.broadcast %61 : tensor<1x16xi1> -> tensor<16x16xi1>
-          %64 = tt.load %28, %63, %62 : tensor<16x16x!tt.ptr<f32>>
-          %65 = tt.splat %59 : i32 -> tensor<16x1xi32>
-          %66 = arith.cmpi slt, %29, %65 : tensor<16x1xi32>
-          %67 = tt.broadcast %66 : tensor<16x1xi1> -> tensor<16x16xi1>
-          %68 = tt.load %39, %67, %62 : tensor<16x16x!tt.ptr<f32>>
-          %69 = tt.dot %64, %68, %62 : tensor<16x16xf32> * tensor<16x16xf32> -> tensor<16x16xf32>
+          %68 = tt.splat %cst_0 : f32 -> tensor<16x16xf32>
+          %69 = tt.dot %63, %67, %68 : tensor<16x16xf32> * tensor<16x16xf32> -> tensor<16x16xf32>
           %70 = arith.addf %arg13, %69 : tensor<16x16xf32>
           %71 = arith.muli %arg7, %c16_i32 : i32
           %72 = tt.splat %71 : i32 -> tensor<16x16xi32>
