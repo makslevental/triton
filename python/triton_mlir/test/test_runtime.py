@@ -12,7 +12,7 @@ from triton_mlir.extras.dialects.ext import arith
 # noinspection PyUnresolvedReferences
 from triton_mlir.extras.testing import mlir_ctx as ctx, filecheck, MLIRContext
 
-from triton_mlir.dialects import tt
+from triton_mlir.dialects import tt, ttpp
 from triton_mlir.types import T
 from triton_mlir.compiler import (
     HIPBackend,
@@ -191,6 +191,98 @@ def test_run_vector_add_np(ctx: MLIRContext, backend: HIPBackend):
         v14 = tt.splat(output, (BLOCK_SIZE,))
         v15 = tt.addptr(v14, v4)
         tt.store(v15, v13, v6)
+        tt.return_(srcs=[])
+
+    vector_add.emit()
+    ctx.module.operation.verify()
+    triton_mod = unwrap_c_module_op(ctx.module.operation)
+    hsaco, metadata = backend.compile(triton_mod, {"arch": backend.target.arch})
+    assert metadata.get("shared") == 0
+
+    props = hip.hipDeviceProp_t()
+    hip_check(hip.hipGetDeviceProperties(props, 0))
+    module = hip_check(hip.hipModuleLoadData(hsaco))
+    kernel = hip_check(hip.hipModuleGetFunction(module, b"vector_add"))
+
+    # kernel launch
+
+    ## inputs
+    n_elements = 128
+    x_h = np.random.rand(n_elements).astype(dtype=np.float32)
+    y_h = np.random.rand(n_elements).astype(dtype=np.float32)
+    output_h = np.zeros((n_elements,)).astype(dtype=np.float32)
+
+    # device vectors
+    num_bytes = n_elements * x_h.itemsize
+    x_d = hip_check(hip.hipMalloc(num_bytes))
+    y_d = hip_check(hip.hipMalloc(num_bytes))
+    output_d = hip_check(hip.hipMalloc(num_bytes))
+
+    # copy input data to device
+    hip_check(
+        hip.hipMemcpy(x_d, x_h, num_bytes, hip.hipMemcpyKind.hipMemcpyHostToDevice)
+    )
+    hip_check(
+        hip.hipMemcpy(y_d, y_h, num_bytes, hip.hipMemcpyKind.hipMemcpyHostToDevice)
+    )
+    hip_check(
+        hip.hipMemcpy(
+            output_d, output_h, num_bytes, hip.hipMemcpyKind.hipMemcpyHostToDevice
+        )
+    )
+
+    block = hip.dim3(x=BLOCK_SIZE)
+    grid = hip.dim3(math.ceil(n_elements / block.x))
+
+    ## launch
+    hip_check(
+        hip.hipModuleLaunchKernel(
+            kernel,
+            *grid,
+            *block,
+            sharedMemBytes=0,
+            stream=None,
+            kernelParams=None,
+            extra=(x_d, y_d, output_d, n_elements),
+        )
+    )
+
+    # copy result back
+    hip_check(
+        hip.hipMemcpy(
+            output_h, output_d, num_bytes, hip.hipMemcpyKind.hipMemcpyDeviceToHost
+        )
+    )
+
+    assert np.allclose(output_h, x_h + y_h)
+
+    hip_check(hip.hipFree(x_d))
+    hip_check(hip.hipFree(y_d))
+    hip_check(hip.hipFree(output_d))
+
+    hip_check(hip.hipModuleUnload(module))
+
+
+# https://triton-lang.org/main/getting-started/tutorials/01-vector-add.html
+def test_run_vector_add_np_sure(ctx: MLIRContext, backend: HIPBackend):
+    BLOCK_SIZE = 64
+
+    @tt.jit
+    def vector_add(
+        x_ptr: +T.float32,
+        y_ptr: +T.float32,
+        output_ptr: +T.float32,
+        n_elements: T.int32,
+    ):
+        pid = tt.get_program_id(axis=tt.ProgramIDDim.X)
+        block_start = pid * BLOCK_SIZE
+        offsets = block_start + tt.make_range(0, BLOCK_SIZE)
+        mask = offsets < n_elements
+        x = tt.load(x_ptr + offsets, mask)
+        y = tt.load(y_ptr + offsets, mask)
+        output = x + y
+        tt.store(output_ptr + offsets, output, mask)
+
         tt.return_(srcs=[])
 
     vector_add.emit()
