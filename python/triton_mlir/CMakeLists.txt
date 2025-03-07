@@ -249,10 +249,11 @@ if(NOT eudsl_tblgen_FOUND)
   execute_process(
     COMMAND "${Python_EXECUTABLE}" -m eudsl_tblgen --cmake_dir
     OUTPUT_STRIP_TRAILING_WHITESPACE OUTPUT_VARIABLE eudsl_tblgen_DIR
-    COMMAND_ECHO STDERR
+    # COMMAND_ECHO STDERR
   )
 endif()
 find_package(eudsl_tblgen CONFIG REQUIRED)
+message(STATUS "Using eudsl_tblgen @ ${eudsl_tblgen_DIR}")
 
 eudsl_tblgen(eudsl_TritonGPUAttrDefs
   TD_FILE

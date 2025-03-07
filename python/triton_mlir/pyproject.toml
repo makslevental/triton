@@ -16,6 +16,9 @@ dependencies = [
 [project.urls]
 Homepage = "https://github.com/makslevental/triton"
 
+[project.optional-dependencies]
+hip = ["hip-python"]
+
 [build-system]
 requires = [
     "nanobind>=2.2.0",
