@@ -195,7 +195,7 @@ jobs:
             $python3_command -m pip install hip-python --extra-index-url https://test.pypi.org/simple
           fi
           $python3_command -m pip install triton-mlir -f $PWD/wheelhouse
-          $python3_command - m pytest -s python/triton_mlir/test
+          $python3_command - m pytest -rAs python/triton_mlir/test
 
   release:
 
