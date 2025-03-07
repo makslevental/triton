@@ -75,7 +75,6 @@ def test_make_ttir(ctx):
         v14 = tt.splat(arg2, (64,))
         v15 = tt.addptr(v14, v4)
         tt.store(v15, v13, v6)
-        tt.return_(srcs=[])
 
     kernel_0123.emit()
     assert ctx.module.operation.verify()
@@ -122,7 +121,6 @@ def test_make_ttgir(ctx):
         v14 = tt.splat(arg2, (64,))
         v15 = tt.addptr(v14, v4)
         tt.store(v15, v13, v6)
-        tt.return_(srcs=[])
 
     kernel_0123.emit()
     ctx.module.operation.verify()
@@ -174,7 +172,6 @@ def test_make_llir(ctx):
         v14 = tt.splat(arg2, (64,))
         v15 = tt.addptr(v14, v4)
         tt.store(v15, v13, v6)
-        tt.return_(srcs=[])
 
     kernel_0123.emit()
     ctx.module.operation.verify()
@@ -233,7 +230,6 @@ def test_make_amdgcn(ctx):
         v14 = tt.splat(arg2, (64,))
         v15 = tt.addptr(v14, v4)
         tt.store(v15, v13, v6)
-        tt.return_(srcs=[])
 
     kernel_0123.emit()
     ctx.module.operation.verify()
@@ -297,7 +293,6 @@ def test_make_hsaco(ctx):
         v14 = tt.splat(arg2, (64,))
         v15 = tt.addptr(v14, v4)
         tt.store(v15, v13, v6)
-        tt.return_(srcs=[])
 
     kernel_0123.emit()
     ctx.module.operation.verify()
@@ -363,7 +358,6 @@ def test_compile(ctx):
         v14 = tt.splat(arg2, (64,))
         v15 = tt.addptr(v14, v4)
         tt.store(v15, v13, v6)
-        tt.return_(srcs=[])
 
     kernel_0123.emit()
     ctx.module.operation.verify()
