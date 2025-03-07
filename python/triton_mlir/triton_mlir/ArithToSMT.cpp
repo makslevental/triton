@@ -8,10 +8,14 @@
 //===----------------------------------------------------------------------===//
 
 #include "circt/Dialect/SMT/SMTOps.h"
+#include "circt/Dialect/Verif/VerifDialect.h"
+#include "circt/Dialect/Verif/VerifOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "mlir/Transforms/WalkPatternRewriteDriver.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 
 using namespace circt;
@@ -112,6 +116,25 @@ struct OneToOneOpConversion : OpConversionPattern<SourceOp> {
   }
 };
 
+struct CeilDivSIOpConversion : OpConversionPattern<arith::CeilDivSIOp> {
+  using OpConversionPattern<arith::CeilDivSIOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(arith::CeilDivSIOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto numPlusDenom = rewriter.createOrFold<arith::AddIOp>(
+        op.getLoc(), adaptor.getLhs(), adaptor.getRhs());
+    auto bitWidth =
+        llvm::cast<IntegerType>(getElementTypeOrSelf(adaptor.getLhs()))
+            .getWidth();
+    auto one = rewriter.create<arith::ConstantIntOp>(op.getLoc(), 1, bitWidth);
+    auto numPlusDenomMinusOne =
+        rewriter.createOrFold<arith::SubIOp>(op.getLoc(), numPlusDenom, one);
+    rewriter.replaceOpWithNewOp<arith::DivSIOp>(op, numPlusDenomMinusOne,
+                                                adaptor.getRhs());
+    return success();
+  }
+};
 /// Lower the SourceOp to the TargetOp special-casing if the second operand is
 /// zero to return a new symbolic value.
 template <typename SourceOp, typename TargetOp>
@@ -323,18 +346,25 @@ void populateArithToSMTConversionPatterns(TypeConverter &converter,
 }
 
 void ConvertArithToSMT::runOnOperation() {
+
+  RewritePatternSet patterns(&getContext());
+  patterns.add<CeilDivSIOpConversion>(&getContext());
+  walkAndApplyPatterns(getOperation(), std::move(patterns));
+
   ConversionTarget target(getContext());
   target.addIllegalDialect<arith::ArithDialect>();
   target.addLegalDialect<smt::SMTDialect>();
 
-  RewritePatternSet patterns(&getContext());
   TypeConverter converter;
   populateArithToSMTTypeConverter(converter);
+  patterns.clear();
   populateArithToSMTConversionPatterns(converter, patterns);
 
-  if (failed(mlir::applyPartialConversion(getOperation(), target,
-                                          std::move(patterns))))
-    return signalPassFailure();
+  getOperation()->walk([&target, &patterns](verif::ContractOp op) {
+    if (failed(mlir::applyPartialConversion(op, target, std::move(patterns))))
+      return WalkResult::interrupt();
+    return WalkResult::advance();
+  });
 }
 
 namespace mlir::triton::AMD {
