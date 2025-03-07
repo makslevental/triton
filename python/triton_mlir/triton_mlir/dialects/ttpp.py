@@ -9,7 +9,8 @@ from .tt import (
     store,
     load,
 )
-from .._mlir_libs._triton.tt import get_ptr_type_typeid
+from .tt import get_ptr_type_typeid
+from .ttg import BlockedEncodingAttr, SliceEncodingAttr, SwizzledSharedEncodingAttr
 from ..extras.dialects.ext.arith import Scalar, constant, _binary_op
 from ..extras.dialects.ext.tensor import Tensor
 from ..extras.util import get_user_code_loc
@@ -71,7 +72,7 @@ class TritonTensor(Tensor):
 
         if isinstance(other, (TritonPointer, TritonScalar)):
             assert self.has_static_shape()
-            other = splat(other, self.shape)
+            other = splat(other, result=self.type)
 
         if isinstance(other, Tensor) and self.shape != other.shape:
             self, other = broadcast_binary(self, other)
@@ -88,6 +89,12 @@ class TritonTensor(Tensor):
 
         return TritonTensor(super().__add__(other))
 
+    def __and__(self, other: Tensor | Value, *, loc=None):
+        if isinstance(other, Tensor) and self.shape != other.shape:
+            self, other = broadcast_binary(self, other)
+
+        return TritonTensor(super().__and__(other))
+
     def __lt__(self, other: Tensor | Value, *, loc=None):
         if loc is None:
             loc = get_user_code_loc()
@@ -100,6 +107,13 @@ class TritonTensor(Tensor):
             return load(self, idx)
         if not isinstance(idx, (tuple, list)):
             idx = [idx]
+        encoding = None
+        if isinstance(
+            idx[-1],
+            (BlockedEncodingAttr, SliceEncodingAttr, SwizzledSharedEncodingAttr),
+        ):
+            encoding = idx.pop()
+
         if not self.has_rank():
             raise ValueError("only ranked tensor slicing/indexing supported")
 
@@ -112,6 +126,9 @@ class TritonTensor(Tensor):
         if isinstance(idx, tuple) and all(i == slice(None) or i is None for i in idx):
             nones = [i for i, n in enumerate(idx) if n is None]
             assert len(nones), f"only one newaxis supported {idx=}"
+            if encoding is not None:
+                assert isinstance(encoding, SliceEncodingAttr)
+                assert encoding.dim == nones[0]
             return expand_dims(self, nones[0])
 
         idx = list((idx,) if isinstance(idx, int) else idx)
@@ -145,6 +162,6 @@ class TritonScalar(Scalar):
     def coerce(self, other) -> tuple["Tensor", "Tensor"]:
         if isinstance(other, Tensor):
             assert other.has_static_shape()
-            return splat(self, other.shape), other
+            return splat(self, result=other.type), other
 
         return super().coerce(other)

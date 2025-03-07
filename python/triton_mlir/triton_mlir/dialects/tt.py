@@ -11,6 +11,7 @@ from ._tt_ops_gen import *
 # noinspection PyUnresolvedReferences
 from .._mlir_libs._triton.tt import *
 
+from . import amdgpu
 from . import arith
 from ..extras import types as _T
 from ..extras.dialects.ext.arith import Scalar, constant
@@ -60,22 +61,30 @@ def jit(
 _make_range = make_range
 
 
-def make_range(start, end, *, result=None, loc=None, ip=None):
+def make_range(start, end, *, result=None, encoding=None, loc=None, ip=None):
     if loc is None:
         loc = get_user_code_loc()
     if result is None:
-        result = _T.tensor(end - start, _T.i32())
+        result = RankedTensorType.get((end - start,), _T.i32(), encoding=encoding)
     return _make_range(result, start, end, loc=loc, ip=ip)
 
 
 _splat = splat
 
 
-def splat(src: Value, sizes: tuple[int] = None, *, result=None, loc=None, ip=None):
+def splat(
+    src: Value,
+    sizes: tuple[int] = None,
+    *,
+    result=None,
+    encoding=None,
+    loc=None,
+    ip=None,
+):
     if loc is None:
         loc = get_user_code_loc()
     if result is None:
-        result = _T.tensor(*sizes, src.type)
+        result = RankedTensorType.get(sizes, src.type, encoding=encoding)
     return _splat(result, src, loc=loc, ip=ip)
 
 
@@ -88,11 +97,19 @@ def zeros(shape: Sequence[int], dtype: Optional[Type] = None):
 _broadcast = broadcast
 
 
-def broadcast(src: Tensor, shape: list[int] = None, *, result=None, loc=None, ip=None):
+def broadcast(
+    src: Tensor,
+    shape: list[int] = None,
+    *,
+    result=None,
+    encoding=None,
+    loc=None,
+    ip=None,
+):
     if loc is None:
         loc = get_user_code_loc()
     if result is None:
-        result = RankedTensorType.get(shape, src.dtype)
+        result = RankedTensorType.get(shape, src.dtype, encoding=encoding)
     return _broadcast(result, src, loc=loc, ip=ip)
 
 
@@ -136,9 +153,9 @@ def broadcast_binary(lhs: Tensor, rhs: Tensor) -> tuple[Tensor, Tensor]:
                 "at index " + str(i) + ": " + str(left) + " and " + str(right)
             )
     if lhs_shape != ret_shape:
-        lhs = broadcast(lhs, ret_shape)
+        lhs = broadcast(lhs, ret_shape, encoding=lhs.type.encoding)
     if rhs_shape != ret_shape:
-        rhs = broadcast(rhs, ret_shape)
+        rhs = broadcast(rhs, ret_shape, encoding=rhs.type.encoding)
     return lhs, rhs
 
 
@@ -174,6 +191,7 @@ def load(
     other=None,
     boundary_check=None,
     padding=None,
+    amdgpu_op_idx=None,
     loc=None,
     ip=None,
 ):
@@ -181,7 +199,14 @@ def load(
         loc = get_user_code_loc()
     if isinstance(other, (int, float, bool)):
         if RankedTensorType.isinstance(ptr.type):
-            other = constant(other, type=ptr.type.element_type.pointee_type)
+            other = constant(
+                other,
+                type=RankedTensorType.get(
+                    ptr.type.shape,
+                    ptr.type.element_type.pointee_type,
+                    encoding=ptr.type.encoding,
+                ),
+            )
         else:
             other = constant(other, type=ptr.type.pointee_type)
     if other is not None:
@@ -192,7 +217,7 @@ def load(
     if ptr.shape != mask.shape:
         mask = broadcast(mask, ptr.shape, loc=loc, ip=ip)
 
-    return _load(
+    l = _load(
         ptr,
         cache=cache,
         evict=evict,
@@ -204,6 +229,9 @@ def load(
         loc=loc,
         ip=ip,
     )
+    if amdgpu_op_idx is not None:
+        l.owner.attributes["OpIdx"] = amdgpu.OpIdxAttr.get(amdgpu_op_idx)
+    return l
 
 
 _store = store
