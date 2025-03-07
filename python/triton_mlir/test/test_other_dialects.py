@@ -174,8 +174,6 @@ def test_inline_mod_linalg_generic_transform(ctx):
 
         # store(c_ptrs, value=c, mask=c_mask)
 
-        tt.return_(srcs=[])
-
     @module(attrs={"transform.target_tag": StringAttr.get("payload")})
     def payload():
         matmul_kernel_2.emit(force=True)

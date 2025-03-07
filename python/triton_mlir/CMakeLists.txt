@@ -40,6 +40,14 @@ add_mlir_library(ArithToSMT
   MLIRTransforms
 )
 
+add_mlir_library(LowerContracts
+  triton_mlir/LowerContracts.cpp
+  LINK_LIBS PUBLIC
+  CIRCTVerif
+  MLIRTransforms
+)
+
+
 declare_mlir_python_sources(TritonPythonSources)
 
 declare_mlir_dialect_python_bindings(
@@ -159,7 +167,14 @@ set(_libs
 
   MLIRBuiltinToLLVMIRTranslation
   MLIRLLVMToLLVMIRTranslation
+
+  # CIRCT
+  CIRCTSMT
+  CIRCTVerif
+  CIRCTVerifToSMT
+  CIRCTVerifTransforms
   ArithToSMT
+  LowerContracts
 
   # LLVM
   LLVMSupport
@@ -340,8 +355,8 @@ add_mlir_python_modules(TritonPythonModules
   DECLARED_SOURCES
     ${mlir_python_sources_deps}
     MLIRPythonSources.Core.Python
-    CIRCTBindingsPythonSources.Dialects.verif
-    CIRCTBindingsPythonSources.Dialects.smt
+    CIRCTBindingsPythonSources.Dialects.verif.ops_gen
+    CIRCTBindingsPythonSources.Dialects.smt.ops_gen
     TritonPythonSources
 )
 

@@ -411,7 +411,8 @@ def generic_print_walk_callback(op):
     elif isinstance(opview, scf.YieldOp):
         print_opview(opview, name=f"scf.yield_")
     elif isinstance(opview, tt.ReturnOp):
-        print_opview(opview, name=f"tt.return_")
+        # print_opview(opview, name=f"tt.return_")
+        pass
     elif isinstance(opview, tt.PrintOp):
         print_opview(opview, name=f"tt.print_")
     else:
@@ -1031,8 +1032,6 @@ def test_inline_mod(ctx, backend, autotune_config):
 
         store(c_ptrs, value=c, mask=c_mask)
 
-        tt.return_(srcs=[])
-
     matmul_kernel_2.emit()
     assert ctx.module.operation.verify()
     triton_mod = unwrap_c_module_op(ctx.module.operation)
@@ -1197,8 +1196,6 @@ def test_inline_mod_ttpp(ctx, backend, autotune_config):
         c_ptrs = c_ptr + stride_cm * offs_cm[:, None] + stride_cn * offs_cn[None, :]
         c_mask = (offs_cm[:, None] < M) & (offs_cn[None, :] < N)
         store(c_ptrs, c, mask=c_mask)
-
-        tt.return_(srcs=[])
 
     matmul_kernel_3.emit()
     assert ctx.module.operation.verify()
@@ -1583,8 +1580,6 @@ def test_inline_mod_ttg(ctx, backend, autotune_config):
         )
         v98 = v96 & v97
         tt.store(ptr=v91, value=v99, mask=v98)
-
-        tt.return_(srcs=[])
 
     matmul_kernel_3.emit()
     ctx.module.operation.verify()

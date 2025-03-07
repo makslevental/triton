@@ -10,8 +10,10 @@
 #include "amd/include/Dialect/TritonAMDGPU/IR/Dialect.h"
 #include "amd/include/TritonAMDGPUToLLVM/Passes.h"
 #include "amd/include/TritonAMDGPUTransforms/Passes.h"
+#include "circt/Conversion/Passes.h"
 #include "circt/Dialect/SMT/SMTOps.h"
 #include "circt/Dialect/Verif/VerifDialect.h"
+#include "circt/Dialect/Verif/VerifPasses.h"
 #include "lib/Target/LLVMIR/LLVMPasses.h"
 #include "lld/Common/Driver.h"
 #include "mlir-c/IR.h"
@@ -92,6 +94,7 @@
 namespace mlir::triton::AMD {
 enum class ISAFamily;
 void registerConvertArithToSMTPass();
+void registerLowerContractsPassInFunctions();
 } // namespace mlir::triton::AMD
 namespace mlir::test {
 void registerTestAliasPass();
@@ -167,7 +170,8 @@ void registerTritonDialectsAndPasses(mlir::DialectRegistry &registry) {
               mlir::x86vector::X86VectorDialect,
               mlir::xegpu::XeGPUDialect,
 
-              circt::smt::SMTDialect
+              circt::smt::SMTDialect,
+              circt::verif::VerifDialect
   >();
   // clang-format on
 
@@ -225,6 +229,9 @@ void registerTritonDialectsAndPasses(mlir::DialectRegistry &registry) {
 
   // CIRCT passes
   mlir::triton::AMD::registerConvertArithToSMTPass();
+  mlir::triton::AMD::registerLowerContractsPassInFunctions();
+  circt::verif::registerStripContractsPass();
+  circt::registerConvertVerifToSMT();
 
   // TritonAMDGPUToLLVM passes
   mlir::triton::registerConvertTritonAMDGPUToLLVM();
