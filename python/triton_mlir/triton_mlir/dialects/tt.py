@@ -1,7 +1,7 @@
 #  Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 #  See https://llvm.org/LICENSE.txt for license information.
 #  SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-
+from functools import update_wrapper
 from typing import Optional, Sequence
 
 # noinspection PyUnresolvedReferences
@@ -21,6 +21,11 @@ from ..extras.util import make_maybe_no_args_decorator, get_user_code_loc
 from ..ir import Value, RankedTensorType, Type, ShapedType, BoolAttr, TypeAttr
 
 
+class _return_op(ReturnOp):
+    def __init__(self, xs):
+        super().__init__(xs)
+
+
 @make_maybe_no_args_decorator
 def jit(
     f,
@@ -31,6 +36,7 @@ def jit(
     res_attrs=None,
     function_type=None,
     noinline=None,
+    emit=False,
     loc=None,
     ip=None,
 ):
@@ -42,10 +48,10 @@ def jit(
         func_attrs["noinline"] = BoolAttr.get(noinline)
     if function_type is not None and isinstance(function_type, TypeAttr):
         function_type = function_type.value
-    return FuncBase(
+    func_ = FuncBase(
         body_builder=f,
         func_op_ctor=FuncOp,
-        return_op_ctor=None,
+        return_op_ctor=_return_op,
         call_op_ctor=CallOp,
         sym_visibility=sym_visibility,
         sym_name=sym_name,
@@ -56,6 +62,10 @@ def jit(
         loc=loc,
         ip=ip,
     )
+    func_ = update_wrapper(func_, f)
+    if emit:
+        func_.emit()
+    return func_
 
 
 _make_range = make_range

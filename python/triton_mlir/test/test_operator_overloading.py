@@ -59,7 +59,6 @@ def test_vadd(ctx: MLIRContext):
 
         output = x + y
         tt.store(output_ptr + offsets, output, mask)
-        tt.return_(srcs=[])
 
     kernel_0123.emit()
 
@@ -118,7 +117,6 @@ def test_vadd_set_get(ctx: MLIRContext):
         output = x + y
         output_ptr += offsets
         output_ptr[mask] = output
-        tt.return_(srcs=[])
 
     kernel_0123.emit()
 
@@ -217,7 +215,6 @@ def test_matmul(ctx: MLIRContext):
         c_ptrs = c_ptr + stride_cm * offs_cm[:, None] + stride_cn * offs_cn[None, :]
         c_mask = (offs_cm[:, None] < M) & (offs_cn[None, :] < N)
         tt.store(c_ptrs, c, mask=c_mask)
-        tt.return_(srcs=[])
 
     matmul_kernel.emit()
 
