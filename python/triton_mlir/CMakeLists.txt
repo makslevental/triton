@@ -20,6 +20,7 @@ include_directories(${TRITON_SOURCE_DIR}/third_party/proton/dialect/include/Dial
 
 if(DEFINED MLIR_INSTALL_PREFIX)
   find_package(LLD REQUIRED CONFIG PATHS ${MLIR_DIR})
+  find_package(CIRCT REQUIRED CONFIG PATHS ${MLIR_DIR})
   include_directories(${LLD_INCLUDE_DIRS})
 endif()
 
@@ -31,6 +32,21 @@ set(MLIR_BINDINGS_PYTHON_NB_DOMAIN "triton_mlir" CACHE STRING "" FORCE)
 ################################################################################
 # Sources
 ################################################################################
+
+add_mlir_library(ArithToSMT
+  triton_mlir/ArithToSMT.cpp
+  LINK_LIBS PUBLIC
+  CIRCTSMT
+  MLIRTransforms
+)
+
+add_mlir_library(LowerContracts
+  triton_mlir/LowerContracts.cpp
+  LINK_LIBS PUBLIC
+  CIRCTVerif
+  MLIRTransforms
+)
+
 
 declare_mlir_python_sources(TritonPythonSources)
 
@@ -151,6 +167,14 @@ set(_libs
 
   MLIRBuiltinToLLVMIRTranslation
   MLIRLLVMToLLVMIRTranslation
+
+  # CIRCT
+  CIRCTSMT
+  CIRCTVerif
+  CIRCTVerifToSMT
+  CIRCTVerifTransforms
+  ArithToSMT
+  LowerContracts
 
   # LLVM
   LLVMSupport
@@ -331,6 +355,8 @@ add_mlir_python_modules(TritonPythonModules
   DECLARED_SOURCES
     ${mlir_python_sources_deps}
     MLIRPythonSources.Core.Python
+    CIRCTBindingsPythonSources.Dialects.verif.ops_gen
+    CIRCTBindingsPythonSources.Dialects.smt.ops_gen
     TritonPythonSources
 )
 
