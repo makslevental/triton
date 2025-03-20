@@ -473,3 +473,6 @@ def ilogb(arg0, _builder=None):
             (core.dtype("fp32"), ): ("__ocml_ilogb_f32", core.dtype("int32")),
             (core.dtype("fp64"), ): ("__ocml_ilogb_f64", core.dtype("int32")),
         }, is_pure=True, _builder=_builder)
+
+
+# oneline change
