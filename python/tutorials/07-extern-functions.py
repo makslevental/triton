@@ -21,7 +21,9 @@ import triton
 import triton.language as tl
 import inspect
 import os
-from triton.language.extra import libdevice
+import numpy as np
+# from triton.language.extra import libdevice
+from triton.language.extra.hip import libdevice
 
 from pathlib import Path
 
@@ -39,9 +41,46 @@ def asin_kernel(
     block_start = pid * BLOCK_SIZE
     offsets = block_start + tl.arange(0, BLOCK_SIZE)
     mask = offsets < n_elements
-    x = tl.load(x_ptr + offsets, mask=mask)
-    x = libdevice.asin(x)
-    tl.store(y_ptr + offsets, x, mask=mask)
+    # x = tl.load(x_ptr + offsets, mask=mask)
+    # x = libdevice.asin(x)
+    x_ptr_plus_offsets = x_ptr + offsets
+    x = libdevice.load_acquire_workgroup(x_ptr_plus_offsets)
+    x = libdevice.load_relaxed_workgroup(x_ptr_plus_offsets)
+    x = libdevice.load_acquire_agent(x_ptr_plus_offsets)
+    x = libdevice.load_relaxed_agent(x_ptr_plus_offsets)
+    x = libdevice.load_acquire_system(x_ptr_plus_offsets)
+    x = libdevice.load_relaxed_system(x_ptr_plus_offsets)
+
+    x = libdevice.store_release_workgroup(x_ptr_plus_offsets)
+    x = libdevice.store_relaxed_workgroup(x_ptr_plus_offsets)
+    x = libdevice.store_release_agent(x_ptr_plus_offsets)
+    x = libdevice.store_relaxed_agent(x_ptr_plus_offsets)
+    x = libdevice.store_release_system(x_ptr_plus_offsets)
+    x = libdevice.store_relaxed_system(x_ptr_plus_offsets)
+
+    x = libdevice.syncthreads()
+
+    y_ptr_plus_offsets = y_ptr + offsets
+    x = libdevice.red_add_release_agent(y_ptr_plus_offsets, y_ptr_plus_offsets)
+    x = libdevice.red_add_release_system(y_ptr_plus_offsets, y_ptr_plus_offsets)
+
+    x = libdevice.atom_add_acquire_agent(y_ptr_plus_offsets, y_ptr_plus_offsets)
+    x = libdevice.atom_add_relaxed_agent(y_ptr_plus_offsets, y_ptr_plus_offsets)
+    x = libdevice.atom_add_acqrel_agent(y_ptr_plus_offsets, y_ptr_plus_offsets)
+
+    x = libdevice.atom_add_acquire_system(y_ptr_plus_offsets, y_ptr_plus_offsets)
+    x = libdevice.atom_add_relaxed_system(y_ptr_plus_offsets, y_ptr_plus_offsets)
+    x = libdevice.atom_add_acqrel_system(y_ptr_plus_offsets, y_ptr_plus_offsets)
+
+    x = libdevice.atom_cas_acquire_relaxed_agent(y_ptr_plus_offsets, y_ptr_plus_offsets, y_ptr_plus_offsets)
+    x = libdevice.atom_cas_release_relaxed_agent(y_ptr_plus_offsets, y_ptr_plus_offsets, y_ptr_plus_offsets)
+    x = libdevice.atom_cas_release_relaxed_agent(y_ptr_plus_offsets, y_ptr_plus_offsets, y_ptr_plus_offsets)
+    x = libdevice.atom_cas_relaxed_relaxed_agent(y_ptr_plus_offsets, y_ptr_plus_offsets, y_ptr_plus_offsets)
+
+    x = libdevice.atom_cas_acquire_relaxed_system(y_ptr_plus_offsets, y_ptr_plus_offsets, y_ptr_plus_offsets)
+    x = libdevice.atom_cas_release_relaxed_system(y_ptr_plus_offsets, y_ptr_plus_offsets, y_ptr_plus_offsets)
+    x = libdevice.atom_cas_release_relaxed_system(y_ptr_plus_offsets, y_ptr_plus_offsets, y_ptr_plus_offsets)
+    x = libdevice.atom_cas_relaxed_relaxed_system(y_ptr_plus_offsets, y_ptr_plus_offsets, y_ptr_plus_offsets)
 
 
 # %%
@@ -51,9 +90,9 @@ def asin_kernel(
 
 torch.manual_seed(0)
 size = 98432
-x = torch.rand(size, device=DEVICE)
-output_triton = torch.zeros(size, device=DEVICE)
-output_torch = torch.asin(x)
+x = torch.randint(low=0, high=2, size=(size, ), dtype=torch.uint64, device=DEVICE)
+output_triton = torch.zeros(size, device=DEVICE, dtype=torch.int32)
+output_torch = torch.asin(x).to(dtype=torch.uint64)
 assert x.is_cuda and output_triton.is_cuda
 n_elements = output_torch.numel()
 grid = lambda meta: (triton.cdiv(n_elements, meta['BLOCK_SIZE']), )
@@ -61,39 +100,4 @@ asin_kernel[grid](x, output_triton, n_elements, BLOCK_SIZE=1024)
 print(output_torch)
 print(output_triton)
 print(f'The maximum difference between torch and triton is '
-      f'{torch.max(torch.abs(output_torch - output_triton))}')
-
-
-# %%
-#  Customize the libdevice library path
-# -------------------------------------
-# We can also customize the libdevice library path by passing the path to the `libdevice` library to the `asin` kernel.
-def is_cuda():
-    return triton.runtime.driver.active.get_current_target().backend == "cuda"
-
-
-def is_hip():
-    return triton.runtime.driver.active.get_current_target().backend == "hip"
-
-
-current_file = inspect.getfile(inspect.currentframe())
-current_dir = Path(os.path.dirname(os.path.abspath(current_file)))
-
-if is_cuda():
-    libdir = current_dir.parent.parent / 'third_party/nvidia/backend/lib'
-    extern_libs = {'libdevice': str(libdir / 'libdevice.10.bc')}
-elif is_hip():
-    libdir = current_dir.parent.parent / 'third_party/amd/backend/lib'
-    extern_libs = {}
-    libs = ["ocml", "ockl"]
-    for lib in libs:
-        extern_libs[lib] = str(libdir / f'{lib}.bc')
-else:
-    raise RuntimeError('unknown backend')
-
-output_triton = torch.empty_like(x)
-asin_kernel[grid](x, output_triton, n_elements, BLOCK_SIZE=1024, extern_libs=extern_libs)
-print(output_torch)
-print(output_triton)
-print(f'The maximum difference between torch and triton is '
-      f'{torch.max(torch.abs(output_torch - output_triton))}')
+      f'{np.max(np.abs(output_torch.cpu().numpy() - output_triton.cpu().numpy()))}')

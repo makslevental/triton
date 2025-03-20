@@ -308,7 +308,6 @@ if(TRITON_BUILD_PYTHON_MODULE AND NOT WIN32)
   if(APPLE)
     set(PYTHON_LDFLAGS "-undefined dynamic_lookup")
   endif()
-
   target_link_options(triton PRIVATE ${PYTHON_LDFLAGS})
 endif()
 
