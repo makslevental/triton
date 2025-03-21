@@ -61,26 +61,26 @@ def asin_kernel(
     x = libdevice.syncthreads()
 
     y_ptr_plus_offsets = y_ptr + offsets
-    x = libdevice.red_add_release_agent(y_ptr_plus_offsets, y_ptr_plus_offsets)
-    x = libdevice.red_add_release_system(y_ptr_plus_offsets, y_ptr_plus_offsets)
+    x = libdevice.red_add_release_agent(y_ptr_plus_offsets, offsets)
+    x = libdevice.red_add_release_system(y_ptr_plus_offsets, offsets)
 
-    x = libdevice.atom_add_acquire_agent(y_ptr_plus_offsets, y_ptr_plus_offsets)
-    x = libdevice.atom_add_relaxed_agent(y_ptr_plus_offsets, y_ptr_plus_offsets)
-    x = libdevice.atom_add_acqrel_agent(y_ptr_plus_offsets, y_ptr_plus_offsets)
+    x = libdevice.atom_add_acquire_agent(y_ptr_plus_offsets, offsets)
+    x = libdevice.atom_add_relaxed_agent(y_ptr_plus_offsets, offsets)
+    x = libdevice.atom_add_acqrel_agent(y_ptr_plus_offsets, offsets)
 
-    x = libdevice.atom_add_acquire_system(y_ptr_plus_offsets, y_ptr_plus_offsets)
-    x = libdevice.atom_add_relaxed_system(y_ptr_plus_offsets, y_ptr_plus_offsets)
-    x = libdevice.atom_add_acqrel_system(y_ptr_plus_offsets, y_ptr_plus_offsets)
+    x = libdevice.atom_add_acquire_system(y_ptr_plus_offsets, offsets)
+    x = libdevice.atom_add_relaxed_system(y_ptr_plus_offsets, offsets)
+    x = libdevice.atom_add_acqrel_system(y_ptr_plus_offsets, offsets)
 
-    x = libdevice.atom_cas_acquire_relaxed_agent(y_ptr_plus_offsets, y_ptr_plus_offsets, y_ptr_plus_offsets)
-    x = libdevice.atom_cas_release_relaxed_agent(y_ptr_plus_offsets, y_ptr_plus_offsets, y_ptr_plus_offsets)
-    x = libdevice.atom_cas_release_relaxed_agent(y_ptr_plus_offsets, y_ptr_plus_offsets, y_ptr_plus_offsets)
-    x = libdevice.atom_cas_relaxed_relaxed_agent(y_ptr_plus_offsets, y_ptr_plus_offsets, y_ptr_plus_offsets)
+    x = libdevice.atom_cas_acquire_relaxed_agent(y_ptr_plus_offsets, y_ptr_plus_offsets, offsets)
+    x = libdevice.atom_cas_release_relaxed_agent(y_ptr_plus_offsets, y_ptr_plus_offsets, offsets)
+    x = libdevice.atom_cas_release_relaxed_agent(y_ptr_plus_offsets, y_ptr_plus_offsets, offsets)
+    x = libdevice.atom_cas_relaxed_relaxed_agent(y_ptr_plus_offsets, y_ptr_plus_offsets, offsets)
 
-    x = libdevice.atom_cas_acquire_relaxed_system(y_ptr_plus_offsets, y_ptr_plus_offsets, y_ptr_plus_offsets)
-    x = libdevice.atom_cas_release_relaxed_system(y_ptr_plus_offsets, y_ptr_plus_offsets, y_ptr_plus_offsets)
-    x = libdevice.atom_cas_release_relaxed_system(y_ptr_plus_offsets, y_ptr_plus_offsets, y_ptr_plus_offsets)
-    x = libdevice.atom_cas_relaxed_relaxed_system(y_ptr_plus_offsets, y_ptr_plus_offsets, y_ptr_plus_offsets)
+    x = libdevice.atom_cas_acquire_relaxed_system(y_ptr_plus_offsets, y_ptr_plus_offsets, offsets)
+    x = libdevice.atom_cas_release_relaxed_system(y_ptr_plus_offsets, y_ptr_plus_offsets, offsets)
+    x = libdevice.atom_cas_release_relaxed_system(y_ptr_plus_offsets, y_ptr_plus_offsets, offsets)
+    x = libdevice.atom_cas_relaxed_relaxed_system(y_ptr_plus_offsets, y_ptr_plus_offsets, offsets)
 
 
 # %%

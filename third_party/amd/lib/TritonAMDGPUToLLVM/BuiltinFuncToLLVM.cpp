@@ -169,48 +169,44 @@ private:
         };
 
     // clang-format off
-    // define internal noundef i32 @red_add_release_agent(int AS1*, int AS1*)(
+    // define internal noundef i32 @red_add_release_agent(int AS1*, int)(
     //  ptr addrspace(1) noundef captures(none) %atomic_address,
-    //  ptr addrspace(1) noundef readonly captures(none) %value
+    //  i32 noundef %value
     // ) #0 !dbg !63 {
     // entry:
-    //   %0 = load i32, ptr addrspace(1) %value, align 4, !dbg !64
-    //   %1 = atomicrmw add ptr addrspace(1) %atomic_address, i32 %0 syncscope("agent") release, align 4, !dbg !69
-    //   ret i32 %1, !dbg !70
+    //   %0 = atomicrmw add ptr addrspace(1) %atomic_address, i32 %value syncscope("agent") release, align 4, !dbg !64
+    //   ret i32 %0, !dbg !65
     // }
     // clang-format on
     auto buildAtomicFetchAdd =
         [&rewriter, &loc](Value atomicAddress, Value value,
                           LLVM::AtomicOrdering ordering,
                           std::optional<StringRef> syncGroup = std::nullopt) {
-          auto load = rewriter.create<LLVM::LoadOp>(loc, i32_ty, value,
-                                                    /*alignment=*/4);
           return rewriter.create<LLVM::AtomicRMWOp>(
-              loc, LLVM::AtomicBinOp::add, atomicAddress, load, ordering,
+              loc, LLVM::AtomicBinOp::add, atomicAddress, value, ordering,
               syncGroup.value_or(StringRef()), /*alignment*/ 4);
         };
 
     // clang-format off
-    // define internal noundef range(i64 0, 2) i64 @atom_cas_acquire_relaxed_agent(int AS1*, int AS1*, int AS1*)(
+    // define internal noundef range(i64 0, 2) i64 @atom_cas_acquire_relaxed_agent(int AS1*, int AS1*, int)(
     //  ptr addrspace(1) noundef captures(none) %atomic_address,
     //  ptr addrspace(1) noundef captures(none) %compare,
-    //  ptr addrspace(1) noundef readonly captures(none) %value
-    // ) #0 !dbg !99 {
+    //  i32 noundef %value
+    // ) #0 !dbg !87 {
     // entry:
-    //   %0 = load i32, ptr addrspace(1) %value, align 4, !dbg !100
-    //   %1 = load i32, ptr addrspace(1) %compare, align 4, !dbg !101
-    //   %2 = cmpxchg ptr addrspace(1) %atomic_address, i32 %1, i32 %0 syncscope("agent") acquire monotonic, align 4, !dbg !101
-    //   %3 = extractvalue { i32, i1 } %2, 1, !dbg !101
-    //   br i1 %3, label %cmpxchg.continue, label %cmpxchg.store_expected, !dbg !101
+    //   %0 = load i32, ptr addrspace(1) %compare, align 4, !dbg !88
+    //   %1 = cmpxchg ptr addrspace(1) %atomic_address, i32 %0, i32 %value syncscope("agent") acquire monotonic, align 4, !dbg !88
+    //   %2 = extractvalue { i32, i1 } %1, 1, !dbg !88
+    //   br i1 %2, label %cmpxchg.continue, label %cmpxchg.store_expected, !dbg !88
 
     // cmpxchg.store_expected:
-    //   %4 = extractvalue { i32, i1 } %2, 0
-    //   store i32 %4, ptr addrspace(1) %compare, align 4, !dbg !101
-    //   br label %cmpxchg.continue, !dbg !101
+    //   %3 = extractvalue { i32, i1 } %1, 0
+    //   store i32 %3, ptr addrspace(1) %compare, align 4, !dbg !88
+    //   br label %cmpxchg.continue, !dbg !88
 
     // cmpxchg.continue:
-    //   %conv = zext i1 %3 to i64, !dbg !101
-    //   ret i64 %conv, !dbg !102
+    //   %conv = zext i1 %2 to i64, !dbg !88
+    //   ret i64 %conv, !dbg !89
     // }
     // clang-format on
     auto buildAtomicCompareExchangeStrong =
@@ -218,12 +214,10 @@ private:
                           LLVM::AtomicOrdering successOrdering,
                           LLVM::AtomicOrdering failureOrdering,
                           std::optional<StringRef> syncGroup = std::nullopt) {
-          auto val = rewriter.create<LLVM::LoadOp>(loc, i32_ty, value,
-                                                   /*alignment=*/4);
           auto cmp = rewriter.create<LLVM::LoadOp>(loc, i32_ty, compare,
                                                    /*alignment=*/4);
           auto cmpxchg = rewriter.create<LLVM::AtomicCmpXchgOp>(
-              loc, atomicAddress, cmp, val, successOrdering, failureOrdering,
+              loc, atomicAddress, cmp, value, successOrdering, failureOrdering,
               syncGroup.value_or(StringRef()),
               /*alignment*/ 4);
           auto extractOne = rewriter.create<LLVM::ExtractValueOp>(

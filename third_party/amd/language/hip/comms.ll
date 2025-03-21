@@ -1,5 +1,5 @@
 @__hip_cuid_eabfcf1a4bdc33de = addrspace(1) global i8 0
-@llvm.compiler.used = appending addrspace(1) global [30 x ptr] [ptr @syncthreads(), ptr @load_acquire_agent(unsigned long AS1*), ptr @load_relaxed_agent(unsigned long AS1*), ptr @load_acquire_system(unsigned long AS1*), ptr @load_relaxed_system(unsigned long AS1*), ptr @store_relaxed_agent(unsigned long AS1*), ptr @store_release_agent(unsigned long AS1*), ptr @store_relaxed_system(unsigned long AS1*), ptr @store_release_system(unsigned long AS1*), ptr @atom_add_acqrel_agent(int AS1*, int AS1*), ptr @red_add_release_agent(int AS1*, int AS1*), ptr @atom_add_acqrel_system(int AS1*, int AS1*), ptr @atom_add_acquire_agent(int AS1*, int AS1*), ptr @atom_add_relaxed_agent(int AS1*, int AS1*), ptr @load_acquire_workgroup(unsigned long AS1*), ptr @load_relaxed_workgroup(unsigned long AS1*), ptr @red_add_release_system(int AS1*, int AS1*), ptr @atom_add_acquire_system(int AS1*, int AS1*), ptr @atom_add_relaxed_system(int AS1*, int AS1*), ptr @store_relaxed_workgroup(unsigned long AS1*), ptr @store_release_workgroup(unsigned long AS1*), ptr @atom_cas_acqrel_relaxed_agent(int AS1*, int AS1*, int AS1*), ptr @atom_cas_acqrel_relaxed_system(int AS1*, int AS1*, int AS1*), ptr @atom_cas_acquire_relaxed_agent(int AS1*, int AS1*, int AS1*), ptr @atom_cas_relaxed_relaxed_agent(int AS1*, int AS1*, int AS1*), ptr @atom_cas_release_relaxed_agent(int AS1*, int AS1*, int AS1*), ptr @atom_cas_acquire_relaxed_system(int AS1*, int AS1*, int AS1*), ptr @atom_cas_relaxed_relaxed_system(int AS1*, int AS1*, int AS1*), ptr @atom_cas_release_relaxed_system(int AS1*, int AS1*, int AS1*), ptr addrspacecast (ptr addrspace(1) @__hip_cuid_eabfcf1a4bdc33de to ptr)], section "llvm.metadata"
+@llvm.compiler.used = appending addrspace(1) global [30 x ptr] [ptr @syncthreads(), ptr @load_acquire_agent(unsigned long AS1*), ptr @load_relaxed_agent(unsigned long AS1*), ptr @load_acquire_system(unsigned long AS1*), ptr @load_relaxed_system(unsigned long AS1*), ptr @store_relaxed_agent(unsigned long AS1*), ptr @store_release_agent(unsigned long AS1*), ptr @store_relaxed_system(unsigned long AS1*), ptr @store_release_system(unsigned long AS1*), ptr @atom_add_acqrel_agent(int AS1*, int), ptr @red_add_release_agent(int AS1*, int), ptr @atom_add_acqrel_system(int AS1*, int), ptr @atom_add_acquire_agent(int AS1*, int), ptr @atom_add_relaxed_agent(int AS1*, int), ptr @load_acquire_workgroup(unsigned long AS1*), ptr @load_relaxed_workgroup(unsigned long AS1*), ptr @red_add_release_system(int AS1*, int), ptr @atom_add_acquire_system(int AS1*, int), ptr @atom_add_relaxed_system(int AS1*, int), ptr @store_relaxed_workgroup(unsigned long AS1*), ptr @store_release_workgroup(unsigned long AS1*), ptr @atom_cas_acqrel_relaxed_agent(int AS1*, int AS1*, int), ptr @atom_cas_acqrel_relaxed_system(int AS1*, int AS1*, int), ptr @atom_cas_acquire_relaxed_agent(int AS1*, int AS1*, int), ptr @atom_cas_relaxed_relaxed_agent(int AS1*, int AS1*, int), ptr @atom_cas_release_relaxed_agent(int AS1*, int AS1*, int), ptr @atom_cas_acquire_relaxed_system(int AS1*, int AS1*, int), ptr @atom_cas_relaxed_relaxed_system(int AS1*, int AS1*, int), ptr @atom_cas_release_relaxed_system(int AS1*, int AS1*, int), ptr addrspacecast (ptr addrspace(1) @__hip_cuid_eabfcf1a4bdc33de to ptr)], section "llvm.metadata"
 
 define internal noundef i64 @load_acquire_workgroup(unsigned long AS1*)(ptr addrspace(1) noundef readonly captures(none) %input) #0 !dbg !12 {
 entry:
@@ -81,204 +81,188 @@ entry:
   ret i64 0, !dbg !62
 }
 
-define internal noundef i32 @red_add_release_agent(int AS1*, int AS1*)(ptr addrspace(1) noundef captures(none) %atomic_address, ptr addrspace(1) noundef readonly captures(none) %value) #0 !dbg !63 {
+define internal noundef i32 @red_add_release_agent(int AS1*, int)(ptr addrspace(1) noundef captures(none) %atomic_address, i32 noundef %value) #0 !dbg !63 {
 entry:
-  %0 = load i32, ptr addrspace(1) %value, align 4, !dbg !64
-  %1 = atomicrmw add ptr addrspace(1) %atomic_address, i32 %0 syncscope("agent") release, align 4, !dbg !69
-  ret i32 %1, !dbg !70
+  %0 = atomicrmw add ptr addrspace(1) %atomic_address, i32 %value syncscope("agent") release, align 4, !dbg !64
+  ret i32 %0, !dbg !65
 }
 
-define internal noundef i32 @red_add_release_system(int AS1*, int AS1*)(ptr addrspace(1) noundef captures(none) %atomic_address, ptr addrspace(1) noundef readonly captures(none) %value) #0 !dbg !71 {
+define internal noundef i32 @red_add_release_system(int AS1*, int)(ptr addrspace(1) noundef captures(none) %atomic_address, i32 noundef %value) #0 !dbg !66 {
 entry:
-  %0 = load i32, ptr addrspace(1) %value, align 4, !dbg !72
-  %1 = atomicrmw add ptr addrspace(1) %atomic_address, i32 %0 release, align 4, !dbg !73
-  ret i32 %1, !dbg !74
+  %0 = atomicrmw add ptr addrspace(1) %atomic_address, i32 %value release, align 4, !dbg !67
+  ret i32 %0, !dbg !68
 }
 
-define internal noundef i32 @atom_add_acquire_agent(int AS1*, int AS1*)(ptr addrspace(1) noundef captures(none) %atomic_address, ptr addrspace(1) noundef readonly captures(none) %value) #0 !dbg !75 {
+define internal noundef i32 @atom_add_acquire_agent(int AS1*, int)(ptr addrspace(1) noundef captures(none) %atomic_address, i32 noundef %value) #0 !dbg !69 {
 entry:
-  %0 = load i32, ptr addrspace(1) %value, align 4, !dbg !76
-  %1 = atomicrmw add ptr addrspace(1) %atomic_address, i32 %0 syncscope("agent") acquire, align 4, !dbg !77
-  ret i32 %1, !dbg !78
+  %0 = atomicrmw add ptr addrspace(1) %atomic_address, i32 %value syncscope("agent") acquire, align 4, !dbg !70
+  ret i32 %0, !dbg !71
 }
 
-define internal noundef i32 @atom_add_relaxed_agent(int AS1*, int AS1*)(ptr addrspace(1) noundef captures(none) %atomic_address, ptr addrspace(1) noundef readonly captures(none) %value) #0 !dbg !79 {
+define internal noundef i32 @atom_add_relaxed_agent(int AS1*, int)(ptr addrspace(1) noundef captures(none) %atomic_address, i32 noundef %value) #0 !dbg !72 {
 entry:
-  %0 = load i32, ptr addrspace(1) %value, align 4, !dbg !80
-  %1 = atomicrmw add ptr addrspace(1) %atomic_address, i32 %0 syncscope("agent") monotonic, align 4, !dbg !81
-  ret i32 %1, !dbg !82
+  %0 = atomicrmw add ptr addrspace(1) %atomic_address, i32 %value syncscope("agent") monotonic, align 4, !dbg !73
+  ret i32 %0, !dbg !74
 }
 
-define internal noundef i32 @atom_add_acqrel_agent(int AS1*, int AS1*)(ptr addrspace(1) noundef captures(none) %atomic_address, ptr addrspace(1) noundef readonly captures(none) %value) #0 !dbg !83 {
+define internal noundef i32 @atom_add_acqrel_agent(int AS1*, int)(ptr addrspace(1) noundef captures(none) %atomic_address, i32 noundef %value) #0 !dbg !75 {
 entry:
-  %0 = load i32, ptr addrspace(1) %value, align 4, !dbg !84
-  %1 = atomicrmw add ptr addrspace(1) %atomic_address, i32 %0 syncscope("agent") acq_rel, align 4, !dbg !85
-  ret i32 %1, !dbg !86
+  %0 = atomicrmw add ptr addrspace(1) %atomic_address, i32 %value syncscope("agent") acq_rel, align 4, !dbg !76
+  ret i32 %0, !dbg !77
 }
 
-define internal noundef i32 @atom_add_acquire_system(int AS1*, int AS1*)(ptr addrspace(1) noundef captures(none) %atomic_address, ptr addrspace(1) noundef readonly captures(none) %value) #0 !dbg !87 {
+define internal noundef i32 @atom_add_acquire_system(int AS1*, int)(ptr addrspace(1) noundef captures(none) %atomic_address, i32 noundef %value) #0 !dbg !78 {
 entry:
-  %0 = load i32, ptr addrspace(1) %value, align 4, !dbg !88
-  %1 = atomicrmw add ptr addrspace(1) %atomic_address, i32 %0 acquire, align 4, !dbg !89
-  ret i32 %1, !dbg !90
+  %0 = atomicrmw add ptr addrspace(1) %atomic_address, i32 %value acquire, align 4, !dbg !79
+  ret i32 %0, !dbg !80
 }
 
-define internal noundef i32 @atom_add_relaxed_system(int AS1*, int AS1*)(ptr addrspace(1) noundef captures(none) %atomic_address, ptr addrspace(1) noundef readonly captures(none) %value) #0 !dbg !91 {
+define internal noundef i32 @atom_add_relaxed_system(int AS1*, int)(ptr addrspace(1) noundef captures(none) %atomic_address, i32 noundef %value) #0 !dbg !81 {
 entry:
-  %0 = load i32, ptr addrspace(1) %value, align 4, !dbg !92
-  %1 = atomicrmw add ptr addrspace(1) %atomic_address, i32 %0 monotonic, align 4, !dbg !93
-  ret i32 %1, !dbg !94
+  %0 = atomicrmw add ptr addrspace(1) %atomic_address, i32 %value monotonic, align 4, !dbg !82
+  ret i32 %0, !dbg !83
 }
 
-define internal noundef i32 @atom_add_acqrel_system(int AS1*, int AS1*)(ptr addrspace(1) noundef captures(none) %atomic_address, ptr addrspace(1) noundef readonly captures(none) %value) #0 !dbg !95 {
+define internal noundef i32 @atom_add_acqrel_system(int AS1*, int)(ptr addrspace(1) noundef captures(none) %atomic_address, i32 noundef %value) #0 !dbg !84 {
 entry:
-  %0 = load i32, ptr addrspace(1) %value, align 4, !dbg !96
-  %1 = atomicrmw add ptr addrspace(1) %atomic_address, i32 %0 acq_rel, align 4, !dbg !97
-  ret i32 %1, !dbg !98
+  %0 = atomicrmw add ptr addrspace(1) %atomic_address, i32 %value acq_rel, align 4, !dbg !85
+  ret i32 %0, !dbg !86
 }
 
-define internal noundef range(i64 0, 2) i64 @atom_cas_acquire_relaxed_agent(int AS1*, int AS1*, int AS1*)(ptr addrspace(1) noundef captures(none) %atomic_address, ptr addrspace(1) noundef captures(none) %compare, ptr addrspace(1) noundef readonly captures(none) %value) #0 !dbg !99 {
+define internal noundef range(i64 0, 2) i64 @atom_cas_acquire_relaxed_agent(int AS1*, int AS1*, int)(ptr addrspace(1) noundef captures(none) %atomic_address, ptr addrspace(1) noundef captures(none) %compare, i32 noundef %value) #0 !dbg !87 {
 entry:
-  %0 = load i32, ptr addrspace(1) %value, align 4, !dbg !100
-  %1 = load i32, ptr addrspace(1) %compare, align 4, !dbg !101
-  %2 = cmpxchg ptr addrspace(1) %atomic_address, i32 %1, i32 %0 syncscope("agent") acquire monotonic, align 4, !dbg !101
-  %3 = extractvalue { i32, i1 } %2, 1, !dbg !101
-  br i1 %3, label %cmpxchg.continue, label %cmpxchg.store_expected, !dbg !101
+  %0 = load i32, ptr addrspace(1) %compare, align 4, !dbg !88
+  %1 = cmpxchg ptr addrspace(1) %atomic_address, i32 %0, i32 %value syncscope("agent") acquire monotonic, align 4, !dbg !88
+  %2 = extractvalue { i32, i1 } %1, 1, !dbg !88
+  br i1 %2, label %cmpxchg.continue, label %cmpxchg.store_expected, !dbg !88
 
 cmpxchg.store_expected:
-  %4 = extractvalue { i32, i1 } %2, 0
-  store i32 %4, ptr addrspace(1) %compare, align 4, !dbg !101
-  br label %cmpxchg.continue, !dbg !101
+  %3 = extractvalue { i32, i1 } %1, 0
+  store i32 %3, ptr addrspace(1) %compare, align 4, !dbg !88
+  br label %cmpxchg.continue, !dbg !88
 
 cmpxchg.continue:
-  %conv = zext i1 %3 to i64, !dbg !101
-  ret i64 %conv, !dbg !102
+  %conv = zext i1 %2 to i64, !dbg !88
+  ret i64 %conv, !dbg !89
 }
 
-define internal noundef range(i64 0, 2) i64 @atom_cas_release_relaxed_agent(int AS1*, int AS1*, int AS1*)(ptr addrspace(1) noundef captures(none) %atomic_address, ptr addrspace(1) noundef captures(none) %compare, ptr addrspace(1) noundef readonly captures(none) %value) #0 !dbg !103 {
+define internal noundef range(i64 0, 2) i64 @atom_cas_release_relaxed_agent(int AS1*, int AS1*, int)(ptr addrspace(1) noundef captures(none) %atomic_address, ptr addrspace(1) noundef captures(none) %compare, i32 noundef %value) #0 !dbg !90 {
 entry:
-  %0 = load i32, ptr addrspace(1) %value, align 4, !dbg !104
-  %1 = load i32, ptr addrspace(1) %compare, align 4, !dbg !105
-  %2 = cmpxchg ptr addrspace(1) %atomic_address, i32 %1, i32 %0 syncscope("agent") release monotonic, align 4, !dbg !105
-  %3 = extractvalue { i32, i1 } %2, 1, !dbg !105
-  br i1 %3, label %cmpxchg.continue, label %cmpxchg.store_expected, !dbg !105
+  %0 = load i32, ptr addrspace(1) %compare, align 4, !dbg !91
+  %1 = cmpxchg ptr addrspace(1) %atomic_address, i32 %0, i32 %value syncscope("agent") release monotonic, align 4, !dbg !91
+  %2 = extractvalue { i32, i1 } %1, 1, !dbg !91
+  br i1 %2, label %cmpxchg.continue, label %cmpxchg.store_expected, !dbg !91
 
 cmpxchg.store_expected:
-  %4 = extractvalue { i32, i1 } %2, 0
-  store i32 %4, ptr addrspace(1) %compare, align 4, !dbg !105
-  br label %cmpxchg.continue, !dbg !105
+  %3 = extractvalue { i32, i1 } %1, 0
+  store i32 %3, ptr addrspace(1) %compare, align 4, !dbg !91
+  br label %cmpxchg.continue, !dbg !91
 
 cmpxchg.continue:
-  %conv = zext i1 %3 to i64, !dbg !105
-  ret i64 %conv, !dbg !106
+  %conv = zext i1 %2 to i64, !dbg !91
+  ret i64 %conv, !dbg !92
 }
 
-define internal noundef range(i64 0, 2) i64 @atom_cas_relaxed_relaxed_agent(int AS1*, int AS1*, int AS1*)(ptr addrspace(1) noundef captures(none) %atomic_address, ptr addrspace(1) noundef captures(none) %compare, ptr addrspace(1) noundef readonly captures(none) %value) #0 !dbg !107 {
+define internal noundef range(i64 0, 2) i64 @atom_cas_relaxed_relaxed_agent(int AS1*, int AS1*, int)(ptr addrspace(1) noundef captures(none) %atomic_address, ptr addrspace(1) noundef captures(none) %compare, i32 noundef %value) #0 !dbg !93 {
 entry:
-  %0 = load i32, ptr addrspace(1) %value, align 4, !dbg !108
-  %1 = load i32, ptr addrspace(1) %compare, align 4, !dbg !109
-  %2 = cmpxchg ptr addrspace(1) %atomic_address, i32 %1, i32 %0 syncscope("agent") monotonic monotonic, align 4, !dbg !109
-  %3 = extractvalue { i32, i1 } %2, 1, !dbg !109
-  br i1 %3, label %cmpxchg.continue, label %cmpxchg.store_expected, !dbg !109
+  %0 = load i32, ptr addrspace(1) %compare, align 4, !dbg !94
+  %1 = cmpxchg ptr addrspace(1) %atomic_address, i32 %0, i32 %value syncscope("agent") monotonic monotonic, align 4, !dbg !94
+  %2 = extractvalue { i32, i1 } %1, 1, !dbg !94
+  br i1 %2, label %cmpxchg.continue, label %cmpxchg.store_expected, !dbg !94
 
 cmpxchg.store_expected:
-  %4 = extractvalue { i32, i1 } %2, 0
-  store i32 %4, ptr addrspace(1) %compare, align 4, !dbg !109
+  %3 = extractvalue { i32, i1 } %1, 0
+  store i32 %3, ptr addrspace(1) %compare, align 4, !dbg !94
+  br label %cmpxchg.continue, !dbg !94
+
+cmpxchg.continue:
+  %conv = zext i1 %2 to i64, !dbg !94
+  ret i64 %conv, !dbg !95
+}
+
+define internal noundef range(i64 0, 2) i64 @atom_cas_acqrel_relaxed_agent(int AS1*, int AS1*, int)(ptr addrspace(1) noundef captures(none) %atomic_address, ptr addrspace(1) noundef captures(none) %compare, i32 noundef %value) #0 !dbg !96 {
+entry:
+  %0 = load i32, ptr addrspace(1) %compare, align 4, !dbg !97
+  %1 = cmpxchg ptr addrspace(1) %atomic_address, i32 %0, i32 %value syncscope("agent") acq_rel monotonic, align 4, !dbg !97
+  %2 = extractvalue { i32, i1 } %1, 1, !dbg !97
+  br i1 %2, label %cmpxchg.continue, label %cmpxchg.store_expected, !dbg !97
+
+cmpxchg.store_expected:
+  %3 = extractvalue { i32, i1 } %1, 0
+  store i32 %3, ptr addrspace(1) %compare, align 4, !dbg !97
+  br label %cmpxchg.continue, !dbg !97
+
+cmpxchg.continue:
+  %conv = zext i1 %2 to i64, !dbg !97
+  ret i64 %conv, !dbg !98
+}
+
+define internal noundef range(i64 0, 2) i64 @atom_cas_acquire_relaxed_system(int AS1*, int AS1*, int)(ptr addrspace(1) noundef captures(none) %atomic_address, ptr addrspace(1) noundef captures(none) %compare, i32 noundef %value) #0 !dbg !99 {
+entry:
+  %0 = load i32, ptr addrspace(1) %compare, align 4, !dbg !100
+  %1 = cmpxchg ptr addrspace(1) %atomic_address, i32 %0, i32 %value acquire monotonic, align 4, !dbg !100
+  %2 = extractvalue { i32, i1 } %1, 1, !dbg !100
+  br i1 %2, label %cmpxchg.continue, label %cmpxchg.store_expected, !dbg !100
+
+cmpxchg.store_expected:
+  %3 = extractvalue { i32, i1 } %1, 0
+  store i32 %3, ptr addrspace(1) %compare, align 4, !dbg !100
+  br label %cmpxchg.continue, !dbg !100
+
+cmpxchg.continue:
+  %conv = zext i1 %2 to i64, !dbg !100
+  ret i64 %conv, !dbg !101
+}
+
+define internal noundef range(i64 0, 2) i64 @atom_cas_release_relaxed_system(int AS1*, int AS1*, int)(ptr addrspace(1) noundef captures(none) %atomic_address, ptr addrspace(1) noundef captures(none) %compare, i32 noundef %value) #0 !dbg !102 {
+entry:
+  %0 = load i32, ptr addrspace(1) %compare, align 4, !dbg !103
+  %1 = cmpxchg ptr addrspace(1) %atomic_address, i32 %0, i32 %value release monotonic, align 4, !dbg !103
+  %2 = extractvalue { i32, i1 } %1, 1, !dbg !103
+  br i1 %2, label %cmpxchg.continue, label %cmpxchg.store_expected, !dbg !103
+
+cmpxchg.store_expected:
+  %3 = extractvalue { i32, i1 } %1, 0
+  store i32 %3, ptr addrspace(1) %compare, align 4, !dbg !103
+  br label %cmpxchg.continue, !dbg !103
+
+cmpxchg.continue:
+  %conv = zext i1 %2 to i64, !dbg !103
+  ret i64 %conv, !dbg !104
+}
+
+define internal noundef range(i64 0, 2) i64 @atom_cas_relaxed_relaxed_system(int AS1*, int AS1*, int)(ptr addrspace(1) noundef captures(none) %atomic_address, ptr addrspace(1) noundef captures(none) %compare, i32 noundef %value) #0 !dbg !105 {
+entry:
+  %0 = load i32, ptr addrspace(1) %compare, align 4, !dbg !106
+  %1 = cmpxchg ptr addrspace(1) %atomic_address, i32 %0, i32 %value monotonic monotonic, align 4, !dbg !106
+  %2 = extractvalue { i32, i1 } %1, 1, !dbg !106
+  br i1 %2, label %cmpxchg.continue, label %cmpxchg.store_expected, !dbg !106
+
+cmpxchg.store_expected:
+  %3 = extractvalue { i32, i1 } %1, 0
+  store i32 %3, ptr addrspace(1) %compare, align 4, !dbg !106
+  br label %cmpxchg.continue, !dbg !106
+
+cmpxchg.continue:
+  %conv = zext i1 %2 to i64, !dbg !106
+  ret i64 %conv, !dbg !107
+}
+
+define internal noundef range(i64 0, 2) i64 @atom_cas_acqrel_relaxed_system(int AS1*, int AS1*, int)(ptr addrspace(1) noundef captures(none) %atomic_address, ptr addrspace(1) noundef captures(none) %compare, i32 noundef %value) #0 !dbg !108 {
+entry:
+  %0 = load i32, ptr addrspace(1) %compare, align 4, !dbg !109
+  %1 = cmpxchg ptr addrspace(1) %atomic_address, i32 %0, i32 %value acq_rel monotonic, align 4, !dbg !109
+  %2 = extractvalue { i32, i1 } %1, 1, !dbg !109
+  br i1 %2, label %cmpxchg.continue, label %cmpxchg.store_expected, !dbg !109
+
+cmpxchg.store_expected:
+  %3 = extractvalue { i32, i1 } %1, 0
+  store i32 %3, ptr addrspace(1) %compare, align 4, !dbg !109
   br label %cmpxchg.continue, !dbg !109
 
 cmpxchg.continue:
-  %conv = zext i1 %3 to i64, !dbg !109
+  %conv = zext i1 %2 to i64, !dbg !109
   ret i64 %conv, !dbg !110
-}
-
-define internal noundef range(i64 0, 2) i64 @atom_cas_acqrel_relaxed_agent(int AS1*, int AS1*, int AS1*)(ptr addrspace(1) noundef captures(none) %atomic_address, ptr addrspace(1) noundef captures(none) %compare, ptr addrspace(1) noundef readonly captures(none) %value) #0 !dbg !111 {
-entry:
-  %0 = load i32, ptr addrspace(1) %value, align 4, !dbg !112
-  %1 = load i32, ptr addrspace(1) %compare, align 4, !dbg !113
-  %2 = cmpxchg ptr addrspace(1) %atomic_address, i32 %1, i32 %0 syncscope("agent") acq_rel monotonic, align 4, !dbg !113
-  %3 = extractvalue { i32, i1 } %2, 1, !dbg !113
-  br i1 %3, label %cmpxchg.continue, label %cmpxchg.store_expected, !dbg !113
-
-cmpxchg.store_expected:
-  %4 = extractvalue { i32, i1 } %2, 0
-  store i32 %4, ptr addrspace(1) %compare, align 4, !dbg !113
-  br label %cmpxchg.continue, !dbg !113
-
-cmpxchg.continue:
-  %conv = zext i1 %3 to i64, !dbg !113
-  ret i64 %conv, !dbg !114
-}
-
-define internal noundef range(i64 0, 2) i64 @atom_cas_acquire_relaxed_system(int AS1*, int AS1*, int AS1*)(ptr addrspace(1) noundef captures(none) %atomic_address, ptr addrspace(1) noundef captures(none) %compare, ptr addrspace(1) noundef readonly captures(none) %value) #0 !dbg !115 {
-entry:
-  %0 = load i32, ptr addrspace(1) %value, align 4, !dbg !116
-  %1 = load i32, ptr addrspace(1) %compare, align 4, !dbg !117
-  %2 = cmpxchg ptr addrspace(1) %atomic_address, i32 %1, i32 %0 acquire monotonic, align 4, !dbg !117
-  %3 = extractvalue { i32, i1 } %2, 1, !dbg !117
-  br i1 %3, label %cmpxchg.continue, label %cmpxchg.store_expected, !dbg !117
-
-cmpxchg.store_expected:
-  %4 = extractvalue { i32, i1 } %2, 0
-  store i32 %4, ptr addrspace(1) %compare, align 4, !dbg !117
-  br label %cmpxchg.continue, !dbg !117
-
-cmpxchg.continue:
-  %conv = zext i1 %3 to i64, !dbg !117
-  ret i64 %conv, !dbg !118
-}
-
-define internal noundef range(i64 0, 2) i64 @atom_cas_release_relaxed_system(int AS1*, int AS1*, int AS1*)(ptr addrspace(1) noundef captures(none) %atomic_address, ptr addrspace(1) noundef captures(none) %compare, ptr addrspace(1) noundef readonly captures(none) %value) #0 !dbg !119 {
-entry:
-  %0 = load i32, ptr addrspace(1) %value, align 4, !dbg !120
-  %1 = load i32, ptr addrspace(1) %compare, align 4, !dbg !121
-  %2 = cmpxchg ptr addrspace(1) %atomic_address, i32 %1, i32 %0 release monotonic, align 4, !dbg !121
-  %3 = extractvalue { i32, i1 } %2, 1, !dbg !121
-  br i1 %3, label %cmpxchg.continue, label %cmpxchg.store_expected, !dbg !121
-
-cmpxchg.store_expected:
-  %4 = extractvalue { i32, i1 } %2, 0
-  store i32 %4, ptr addrspace(1) %compare, align 4, !dbg !121
-  br label %cmpxchg.continue, !dbg !121
-
-cmpxchg.continue:
-  %conv = zext i1 %3 to i64, !dbg !121
-  ret i64 %conv, !dbg !122
-}
-
-define internal noundef range(i64 0, 2) i64 @atom_cas_relaxed_relaxed_system(int AS1*, int AS1*, int AS1*)(ptr addrspace(1) noundef captures(none) %atomic_address, ptr addrspace(1) noundef captures(none) %compare, ptr addrspace(1) noundef readonly captures(none) %value) #0 !dbg !123 {
-entry:
-  %0 = load i32, ptr addrspace(1) %value, align 4, !dbg !124
-  %1 = load i32, ptr addrspace(1) %compare, align 4, !dbg !125
-  %2 = cmpxchg ptr addrspace(1) %atomic_address, i32 %1, i32 %0 monotonic monotonic, align 4, !dbg !125
-  %3 = extractvalue { i32, i1 } %2, 1, !dbg !125
-  br i1 %3, label %cmpxchg.continue, label %cmpxchg.store_expected, !dbg !125
-
-cmpxchg.store_expected:
-  %4 = extractvalue { i32, i1 } %2, 0
-  store i32 %4, ptr addrspace(1) %compare, align 4, !dbg !125
-  br label %cmpxchg.continue, !dbg !125
-
-cmpxchg.continue:
-  %conv = zext i1 %3 to i64, !dbg !125
-  ret i64 %conv, !dbg !126
-}
-
-define internal noundef range(i64 0, 2) i64 @atom_cas_acqrel_relaxed_system(int AS1*, int AS1*, int AS1*)(ptr addrspace(1) noundef captures(none) %atomic_address, ptr addrspace(1) noundef captures(none) %compare, ptr addrspace(1) noundef readonly captures(none) %value) #0 !dbg !127 {
-entry:
-  %0 = load i32, ptr addrspace(1) %value, align 4, !dbg !128
-  %1 = load i32, ptr addrspace(1) %compare, align 4, !dbg !129
-  %2 = cmpxchg ptr addrspace(1) %atomic_address, i32 %1, i32 %0 acq_rel monotonic, align 4, !dbg !129
-  %3 = extractvalue { i32, i1 } %2, 1, !dbg !129
-  br i1 %3, label %cmpxchg.continue, label %cmpxchg.store_expected, !dbg !129
-
-cmpxchg.store_expected:
-  %4 = extractvalue { i32, i1 } %2, 0
-  store i32 %4, ptr addrspace(1) %compare, align 4, !dbg !129
-  br label %cmpxchg.continue, !dbg !129
-
-cmpxchg.continue:
-  %conv = zext i1 %3 to i64, !dbg !129
-  ret i64 %conv, !dbg !130
 }
 
 declare void @llvm.amdgcn.s.barrier() #2
