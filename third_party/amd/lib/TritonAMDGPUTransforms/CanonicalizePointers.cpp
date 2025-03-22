@@ -1009,17 +1009,32 @@ public:
       rewriter.inlineBlockBefore(ifOp.elseBlock(), newIfOp.elseBlock(),
                                  newIfOp.elseBlock()->begin());
 
-    rewriter.replaceOpWithMultiple(ifOp, {newIfOp.getResults()});
-
-    for (int64_t idx :
-         llvm::cast<DenseI64ArrayAttr>(newIfOp.thenYield()->getDiscardableAttr(
-                                           kSCFIfOpYieldFatPtrOffsets))
-             .asArrayRef()) {
+    ResultRange results = newIfOp.getResults();
+    ArrayRef<long> yieldPtrOffsets =
+        llvm::cast<DenseI64ArrayAttr>(
+            newIfOp.thenYield()->getDiscardableAttr(kSCFIfOpYieldFatPtrOffsets))
+            .asArrayRef();
+    for (int64_t idx : yieldPtrOffsets) {
       Value thenFatPtrBase = newIfOp.thenYield().getOperand(idx);
       Value thenFatPtrOffset = newIfOp.thenYield().getOperand(idx + 1);
-      fatPtrs[{newIfOp.getResult(idx), newIfOp.getResult(idx + 1)}] =
+      fatPtrs[{results[idx], results[idx + 1]}] =
           fatPtrs.at({thenFatPtrBase, thenFatPtrOffset});
     }
+
+    SmallVector<ValueRange> replacements;
+    SetVector<int64_t> ptrIndices(yieldPtrOffsets.begin(),
+                                  yieldPtrOffsets.end());
+    int64_t idx = 0;
+    for (; idx < results.size();) {
+      if (ptrIndices.contains(idx)) {
+        replacements.push_back({results[idx], results[idx + 1]});
+        idx += 2;
+      } else {
+        replacements.push_back({results[idx]});
+        idx += 1;
+      }
+    }
+    rewriter.replaceOpWithMultiple(ifOp, replacements);
 
     return success();
   }
@@ -1441,23 +1456,6 @@ void TritonAMDGPUCanonicalizePointersPass::runOnOperation() {
   });
 
   auto func = getOperation();
-
-  // Skip the pass as a workaround as if op with multiple results are not
-  // supported yet.
-  bool hasIfOpWithMultipleResults =
-      func.walk([&](scf::IfOp ifOp) {
-            if (ifOp.getNumResults() > 1) {
-              for (auto result : ifOp.getResultTypes()) {
-                if (llvm::isa<tt::PointerType>(result)) {
-                  return WalkResult::interrupt();
-                }
-              }
-            }
-            return WalkResult::advance();
-          })
-          .wasInterrupted();
-  if (hasIfOpWithMultipleResults)
-    return;
 
   FatPointers fatPrs;
   PatternRewriter rewriter(&getContext());
