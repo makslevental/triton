@@ -107,6 +107,8 @@ install(
     "triton_mlir/dialects/ttg.py"
     "triton_mlir/dialects/ttng.py"
     "triton_mlir/dialects/ttpp.py"
+    "triton_mlir/dialects/smt.py"
+    "triton_mlir/dialects/verif.py"
   DESTINATION "triton_mlir/dialects"
 )
 

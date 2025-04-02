@@ -3,6 +3,7 @@
 #  SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 import numpy as np
 import pytest
+from triton_mlir.extras.context import mlir_mod_ctx, enable_debug
 
 # this needs to be below the triton_mlir_bindings
 from triton_mlir.extras.dialects.ext import arith
@@ -171,3 +172,8 @@ def test_verify(ctx, autotune_config):
     pm.run(ctx.module.operation)
     print("after")
     print(ctx.module)
+
+
+if __name__ == "__main__":
+    with mlir_mod_ctx(allow_unregistered_dialects=True) as ctx:
+        test_verify(ctx, autotune_configs[0])

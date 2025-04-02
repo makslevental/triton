@@ -281,8 +281,6 @@ def test_run_vector_add_np_sure(ctx: MLIRContext, backend: HIPBackend):
         output = x + y
         tt.store(output_ptr + offsets, output, mask)
 
-        tt.return_(srcs=[])
-
     vector_add.emit()
     ctx.module.operation.verify()
     triton_mod = unwrap_c_module_op(ctx.module.operation)

@@ -116,25 +116,26 @@ struct OneToOneOpConversion : OpConversionPattern<SourceOp> {
   }
 };
 
-struct CeilDivSIOpConversion : OpConversionPattern<arith::CeilDivSIOp> {
-  using OpConversionPattern<arith::CeilDivSIOp>::OpConversionPattern;
+struct CeilDivSIOpConversion : OpRewritePattern<arith::CeilDivSIOp> {
+  CeilDivSIOpConversion(mlir::MLIRContext *context)
+      : OpRewritePattern<arith::CeilDivSIOp>(context) {}
 
   LogicalResult
-  matchAndRewrite(arith::CeilDivSIOp op, OpAdaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override {
+  matchAndRewrite(arith::CeilDivSIOp op,
+                  mlir::PatternRewriter &rewriter) const override {
     auto numPlusDenom = rewriter.createOrFold<arith::AddIOp>(
-        op.getLoc(), adaptor.getLhs(), adaptor.getRhs());
+        op.getLoc(), op.getLhs(), op.getRhs());
     auto bitWidth =
-        llvm::cast<IntegerType>(getElementTypeOrSelf(adaptor.getLhs()))
-            .getWidth();
+        llvm::cast<IntegerType>(getElementTypeOrSelf(op.getLhs())).getWidth();
     auto one = rewriter.create<arith::ConstantIntOp>(op.getLoc(), 1, bitWidth);
     auto numPlusDenomMinusOne =
         rewriter.createOrFold<arith::SubIOp>(op.getLoc(), numPlusDenom, one);
     rewriter.replaceOpWithNewOp<arith::DivSIOp>(op, numPlusDenomMinusOne,
-                                                adaptor.getRhs());
+                                                op.getRhs());
     return success();
   }
 };
+
 /// Lower the SourceOp to the TargetOp special-casing if the second operand is
 /// zero to return a new symbolic value.
 template <typename SourceOp, typename TargetOp>
