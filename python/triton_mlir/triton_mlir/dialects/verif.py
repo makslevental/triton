@@ -3,8 +3,8 @@
 #  SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 from ..extras.util import get_user_code_loc, make_maybe_no_args_decorator
-from ._verif_ops_gen import *
 from ..ir import InsertionPoint
+from ._verif_ops_gen import *
 
 
 @make_maybe_no_args_decorator
@@ -33,3 +33,23 @@ def contract(
         return contract_op.results[0]
     else:
         return contract_op
+
+
+@make_maybe_no_args_decorator
+def formal(
+    body_builder,
+    *,
+    parameters=None,
+    loc=None,
+    ip=None,
+):
+    if loc is None:
+        loc = get_user_code_loc()
+    if parameters is None:
+        parameters = {}
+
+    formal_op = FormalOp(body_builder.__name__, parameters, loc=loc, ip=ip)
+    formal_op.body.blocks.append()
+    with InsertionPoint(formal_op.body.blocks[0]):
+        body_builder()
+    return formal_op

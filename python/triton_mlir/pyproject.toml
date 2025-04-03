@@ -10,7 +10,8 @@ requires-python = ">=3.9"
 dependencies = [
     "triton-mlir-python-extras @ git+https://github.com/makslevental/mlir-python-extras@makslevental/triton_mlir",
     "numpy>=1.19.5, <=2.1.2",
-    "ml_dtypes>=0.1.0, <=0.5.0"
+    "ml_dtypes>=0.1.0, <=0.5.0",
+    "z3-solver"
 ]
 
 [project.urls]
@@ -26,7 +27,7 @@ requires = [
     "scikit-build-core>=0.10.7",
     "typing_extensions==4.12.2",
     "eudsl-tblgen",
-    "PyYAML>=6.0.2"
+    "PyYAML>=6.0.2",
 ]
 build-backend = "scikit_build_core.build"
 

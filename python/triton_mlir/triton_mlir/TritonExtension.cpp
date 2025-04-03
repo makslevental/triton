@@ -14,10 +14,12 @@
 #include "circt/Dialect/SMT/SMTOps.h"
 #include "circt/Dialect/Verif/VerifDialect.h"
 #include "circt/Dialect/Verif/VerifPasses.h"
+#include "circt/Target/ExportSMTLIB.h"
 #include "lib/Target/LLVMIR/LLVMPasses.h"
 #include "lld/Common/Driver.h"
 #include "mlir-c/IR.h"
 #include "mlir-c/Support.h"
+#include "mlir/Bindings/Python/Diagnostics.h"
 #include "mlir/Bindings/Python/NanobindAdaptors.h"
 #include "mlir/CAPI/IR.h"
 #include "mlir/CAPI/Registration.h"
@@ -74,6 +76,7 @@
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/TargetSelect.h"
+#include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
 #include "llvm/TargetParser/TargetParser.h"
@@ -2094,6 +2097,18 @@ void populateAMDGPUDialect(nb::module_ &m) {
 #include "TritonAMDGPUAttrDefs_MlirAttribute_nbclasses.cpp.inc"
 }
 
+void populateSMTDialect(nb::module_ &m) {
+  m.def("export_smtlib", [](mlir::Operation *moduleOp) {
+    std::string result;
+    llvm::raw_string_ostream stream(result);
+    // CollectDiagnosticsToStringScope scope(context);
+    if (succeeded(circt::ExportSMTLIB::exportSMTLIB(moduleOp, stream)))
+      return result;
+
+    throw std::runtime_error("couldn't export smtlib");
+  });
+}
+
 const char *HERE = "HERE";
 
 #include <dlfcn.h>
@@ -2128,6 +2143,9 @@ NB_MODULE(_triton, m) {
 
   auto amdgpuDialect = m.def_submodule("amdgpu");
   populateAMDGPUDialect(amdgpuDialect);
+
+  auto SMTDialect = m.def_submodule("smt");
+  populateSMTDialect(SMTDialect);
 
   m.def(
       "unwrap_c_context", [](MlirContext context) { return unwrap(context); },
@@ -2183,16 +2201,17 @@ NB_MODULE(_triton, m) {
         .release();
   });
 
-  m.def("unwrap_c_op", [](MlirOperation mlirMaybeModuleOp) {
-    Operation *maybeModOp = unwrap(mlirMaybeModuleOp);
-    if (auto modOp = llvm::dyn_cast<ModuleOp>(maybeModOp))
-      return modOp;
-    throw std::runtime_error("operation isn't ModuleOp");
-  });
+  m.def(
+      "unwrap_c_op",
+      [](MlirOperation mlirOperation) {
+        Operation *operation = unwrap(mlirOperation);
+        return operation;
+      },
+      nb::rv_policy::reference);
 
-  m.def("wrap_op", [](mlir::ModuleOp moduleOp) {
-    nb::object capsule = nb::steal<nb::object>(
-        mlirPythonOperationToCapsule(wrap(moduleOp.getOperation())));
+  m.def("wrap_op", [](mlir::Operation *op) {
+    nb::object capsule =
+        nb::steal<nb::object>(mlirPythonOperationToCapsule(wrap(op)));
     return nb::module_::import_(MAKE_MLIR_PYTHON_QUALNAME("ir"))
         .attr("Operation")
         .attr(MLIR_PYTHON_CAPI_FACTORY_ATTR)(capsule)

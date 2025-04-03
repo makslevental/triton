@@ -1,21 +1,25 @@
 #  Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 #  See https://llvm.org/LICENSE.txt for license information.
 #  SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+from textwrap import dedent
+
 import numpy as np
 import pytest
-from triton_mlir.extras.context import mlir_mod_ctx, enable_debug
+from triton_mlir.compiler import unwrap_c_module_op, unwrap_c_op
+from triton_mlir.dialects import tt, verif, ttpp, smt, builtin
+from triton_mlir.extras.context import mlir_mod_ctx
 
 # this needs to be below the triton_mlir_bindings
 from triton_mlir.extras.dialects.ext import arith
+from triton_mlir.extras.dialects.ext import scf
 from triton_mlir.extras.dialects.ext.func import func
 
 # noinspection PyUnresolvedReferences
 from triton_mlir.extras.testing import mlir_ctx as ctx, filecheck, MLIRContext
-
-from triton_mlir.dialects import tt, verif, ttpp
-from triton_mlir.types import T
-from triton_mlir.extras.dialects.ext import scf
+from triton_mlir.extras.util import find_ops
+from triton_mlir.ir import InsertionPoint
 from triton_mlir.passmanager import PassManager
+from triton_mlir.types import T
 
 pytest.mark.usefixtures("ctx")
 
@@ -97,7 +101,6 @@ autotune_configs = [
 
 @pytest.mark.parametrize("autotune_config", autotune_configs[:1])
 def test_verify(ctx, autotune_config):
-
     BLOCK_SIZE_M = autotune_config["BLOCK_SIZE_M"]
     BLOCK_SIZE_N = autotune_config["BLOCK_SIZE_N"]
     BLOCK_SIZE_K = autotune_config["BLOCK_SIZE_K"]
@@ -128,14 +131,19 @@ def test_verify(ctx, autotune_config):
 
         @verif.contract(inputs=[pid, pid], outputs=[T.i32, T.i32])
         def pid_m_pid_n():
-            verif.assume(pid > 1)
-            num_pid_n = arith.ceildivsi(N, BLOCK_SIZE_N_)
-            num_pid_in_group = GROUP_SIZE_M * num_pid_n
-            group_id = pid / num_pid_in_group
-            first_pid_m = group_id * GROUP_SIZE_M
-            pid_m = first_pid_m + ((pid % num_pid_in_group) % GROUP_SIZE_M)
-            pid_n = (pid % num_pid_in_group) / GROUP_SIZE_M
-            verif.require(first_pid_m > 1)
+            smt.assert_(builtin.unrealized_conversion_cast([smt.bool_t()], [pid > 1]))
+
+            @smt.forall(bound_var_types=[smt.bv_t(N.type.width)], bound_var_names=["N"])
+            def forall(n):
+                num_pid_n = arith.ceildivsi(N, BLOCK_SIZE_N_)
+                num_pid_in_group = GROUP_SIZE_M * num_pid_n
+                group_id = pid / num_pid_in_group
+                first_pid_m = group_id * GROUP_SIZE_M
+                pid_m = first_pid_m + ((pid % num_pid_in_group) % GROUP_SIZE_M)
+                pid_n = (pid % num_pid_in_group) / GROUP_SIZE_M
+                lhs = builtin.unrealized_conversion_cast([smt.bool_t()], [pid_m > 1])
+                rhs = builtin.unrealized_conversion_cast([smt.bool_t()], [pid_n > 1])
+                smt.yield_([smt.and_([lhs, rhs])])
 
         pid_m, pid_n = pid_m_pid_n
 
@@ -168,10 +176,107 @@ def test_verify(ctx, autotune_config):
     print("before")
     print(ctx.module)
     print(ctx.module.operation.verify())
-    pm = PassManager.parse("builtin.module(convert-arith-to-smt)")
+
+    pm = PassManager.parse("builtin.module(lower-contracts)")
     pm.run(ctx.module.operation)
+
     print("after")
     print(ctx.module)
+
+    pm = PassManager.parse(
+        "builtin.module(convert-arith-to-smt,reconcile-unrealized-casts)"
+    )
+    pm.run(ctx.module.operation)
+    print(ctx.module)
+
+    formals = find_ops(
+        ctx.module.operation, lambda o: isinstance(o.opview, verif.FormalOp)
+    )
+    assert len(formals) == 1
+    formal = formals[0]
+
+    symbols = find_ops(
+        formal.operation, lambda o: isinstance(o.opview, verif.SymbolicValueOp)
+    )
+    syms_to_smt_types = []
+    for s in symbols:
+        uses = list(s.result.uses)
+        assert len(uses) == 1
+        use = uses[0]
+        assert isinstance(use.owner, builtin.UnrealizedConversionCastOp)
+        syms_to_smt_types.append((s, use.owner.result))
+
+    @builtin.module
+    def mod():
+        @smt.solver
+        def solver(block):
+            _forall = None
+            for op in formal.body.blocks[0].operations:
+                block.append(op)
+                if isinstance(op, smt.ForallOp):
+                    _forall = op
+                elif isinstance(op, tt.GetProgramIdOp):
+                    pid = smt.declare_fun(smt.bv_t(32), name_prefix="pid")
+                    op.result.replace_all_uses_with(pid)
+                    op.erase()
+
+            for i, arg in enumerate(_forall.body.blocks[0].arguments):
+                s, r = syms_to_smt_types[i]
+                r.replace_all_uses_with(arg)
+                r.owner.erase()
+                s.erase()
+
+            smt.assert_(_forall.result)
+
+            smt.check()
+
+            smt.yield_([])
+
+    pm = PassManager.parse("builtin.module(canonicalize,symbol-dce)")
+    pm.run(mod.operation)
+    print(mod)
+    print(mod.operation.verify())
+
+    smtlib_query = smt.export_smtlib(unwrap_c_op(mod.operation))
+    correct = dedent(
+        """\
+    ; solver scope 0
+    (declare-const pid (_ BitVec 32))
+    (assert (let ((tmp (bvsgt pid #x00000001)))
+            tmp))
+    (declare-const tmp_0 (_ BitVec 32))
+    (declare-const tmp_1 (_ BitVec 32))
+    (declare-const tmp_2 (_ BitVec 32))
+    (assert (let ((tmp_3 (forall ((N (_ BitVec 32)))
+                         (let ((tmp_4 (bvneg #x00000001)))
+                                 (let ((tmp_5 (bvadd N #x00000100)))
+                                 (let ((tmp_6 (bvadd tmp_5 tmp_4)))
+                                 (let ((tmp_7 (bvsdiv tmp_6 #x00000100)))
+                                 (let ((tmp_8 (= #x00000100 #x00000000)))
+                                 (let ((tmp_9 (ite tmp_8 tmp_0 tmp_7)))
+                                 (let ((tmp_10 (bvsrem pid tmp_9)))
+                                 (let ((tmp_11 (= tmp_9 #x00000000)))
+                                 (let ((tmp_12 (ite tmp_11 tmp_2 tmp_10)))
+                                 (let ((tmp_13 (bvsgt tmp_12 #x00000001)))
+                                 (let ((tmp_14 (bvsdiv pid tmp_9)))
+                                 (let ((tmp_15 (= tmp_9 #x00000000)))
+                                 (let ((tmp_16 (ite tmp_15 tmp_1 tmp_14)))
+                                 (let ((tmp_17 (bvadd tmp_16 #x00000000)))
+                                 (let ((tmp_18 (bvsgt tmp_17 #x00000001)))
+                                 (let ((tmp_19 (and tmp_18 tmp_13)))
+                                 tmp_19)))))))))))))))))))
+            tmp_3))
+    (check-sat)
+    (reset)
+    """
+    )
+    assert correct == smtlib_query
+
+    import z3
+
+    s = z3.Solver()
+    s.from_string(smtlib_query)
+    assert s.check() == z3.sat
 
 
 if __name__ == "__main__":

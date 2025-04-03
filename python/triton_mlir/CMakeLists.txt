@@ -174,8 +174,10 @@ set(_libs
   CIRCTVerif
   CIRCTVerifToSMT
   CIRCTVerifTransforms
+  CIRCTTransforms
   ArithToSMT
   LowerContracts
+  CIRCTExportSMTLIB
 
   # LLVM
   LLVMSupport

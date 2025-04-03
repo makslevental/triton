@@ -361,7 +361,7 @@ void ConvertArithToSMT::runOnOperation() {
   patterns.clear();
   populateArithToSMTConversionPatterns(converter, patterns);
 
-  getOperation()->walk([&target, &patterns](verif::ContractOp op) {
+  getOperation()->walk([&target, &patterns](verif::FormalOp op) {
     if (failed(mlir::applyPartialConversion(op, target, std::move(patterns))))
       return WalkResult::interrupt();
     return WalkResult::advance();

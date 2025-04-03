@@ -2,6 +2,7 @@ name: "Build Triton Upstream bindings wheel"
 
 on:
   pull_request:
+  workflow_dispatch:
   push:
     branches:
       - main
