@@ -1,19 +1,20 @@
 MLIR_CAPI_EXPORTED MlirAttribute mlirBlockedEncodingAttrAttributeGet(
-    unsigned *sizePerThread, unsigned nsizePerThreads,
-    unsigned *threadsPerWarp__, unsigned nthreadsPerWarp__s,
-    unsigned *warpsPerCTA__, unsigned nwarpsPerCTA__s, unsigned *order,
-    unsigned norders, MlirAttribute CTALayout, MlirContext mlirContext);
+    unsigned *sizePerThread, unsigned nsizePerThreads, unsigned *threadsPerWarp,
+    unsigned nthreadsPerWarps, unsigned *warpsPerCTA, unsigned nwarpsPerCTAs,
+    unsigned *order, unsigned norders, MlirAttribute CTALayout,
+    MlirContext mlirContext);
 MLIR_CAPI_EXPORTED void
 mlirBlockedEncodingAttrGetsizePerThread(MlirAttribute mlirBlockedEncodingAttr,
                                         unsigned **sizePerThreadPtr,
                                         unsigned *nsizePerThreads);
-MLIR_CAPI_EXPORTED void mlirBlockedEncodingAttrGetthreadsPerWarp__(
-    MlirAttribute mlirBlockedEncodingAttr, unsigned **threadsPerWarp__Ptr,
-    unsigned *nthreadsPerWarp__s);
 MLIR_CAPI_EXPORTED void
-mlirBlockedEncodingAttrGetwarpsPerCTA__(MlirAttribute mlirBlockedEncodingAttr,
-                                        unsigned **warpsPerCTA__Ptr,
-                                        unsigned *nwarpsPerCTA__s);
+mlirBlockedEncodingAttrGetthreadsPerWarp(MlirAttribute mlirBlockedEncodingAttr,
+                                         unsigned **threadsPerWarpPtr,
+                                         unsigned *nthreadsPerWarps);
+MLIR_CAPI_EXPORTED void
+mlirBlockedEncodingAttrGetwarpsPerCTA(MlirAttribute mlirBlockedEncodingAttr,
+                                      unsigned **warpsPerCTAPtr,
+                                      unsigned *nwarpsPerCTAs);
 MLIR_CAPI_EXPORTED void
 mlirBlockedEncodingAttrGetorder(MlirAttribute mlirBlockedEncodingAttr,
                                 unsigned **orderPtr, unsigned *norders);
@@ -23,20 +24,19 @@ MLIR_CAPI_EXPORTED MlirTypeID mlirBlockedEncodingAttrGetTypeID(void);
 MLIR_CAPI_EXPORTED bool isaMlirBlockedEncodingAttr(MlirAttribute thing);
 
 MlirAttribute mlirBlockedEncodingAttrAttributeGet(
-    unsigned *sizePerThread, unsigned nsizePerThreads,
-    unsigned *threadsPerWarp__, unsigned nthreadsPerWarp__s,
-    unsigned *warpsPerCTA__, unsigned nwarpsPerCTA__s, unsigned *order,
-    unsigned norders, MlirAttribute CTALayout, MlirContext mlirContext) {
+    unsigned *sizePerThread, unsigned nsizePerThreads, unsigned *threadsPerWarp,
+    unsigned nthreadsPerWarps, unsigned *warpsPerCTA, unsigned nwarpsPerCTAs,
+    unsigned *order, unsigned norders, MlirAttribute CTALayout,
+    MlirContext mlirContext) {
   mlir::MLIRContext *context = unwrap(mlirContext);
   ::llvm::ArrayRef<unsigned> sizePerThread_ = {sizePerThread, nsizePerThreads};
-  ::llvm::ArrayRef<unsigned> threadsPerWarp___ = {threadsPerWarp__,
-                                                  nthreadsPerWarp__s};
-  ::llvm::ArrayRef<unsigned> warpsPerCTA___ = {warpsPerCTA__, nwarpsPerCTA__s};
+  ::llvm::ArrayRef<unsigned> threadsPerWarp_ = {threadsPerWarp,
+                                                nthreadsPerWarps};
+  ::llvm::ArrayRef<unsigned> warpsPerCTA_ = {warpsPerCTA, nwarpsPerCTAs};
   ::llvm::ArrayRef<unsigned> order_ = {order, norders};
   CTALayoutAttr CTALayout_ = llvm::cast<CTALayoutAttr>(unwrap(CTALayout));
-  return wrap(BlockedEncodingAttr::get(context, sizePerThread_,
-                                       threadsPerWarp___, warpsPerCTA___,
-                                       order_, CTALayout_));
+  return wrap(BlockedEncodingAttr::get(context, sizePerThread_, threadsPerWarp_,
+                                       warpsPerCTA_, order_, CTALayout_));
 }
 
 void mlirBlockedEncodingAttrGetsizePerThread(
@@ -49,24 +49,24 @@ void mlirBlockedEncodingAttrGetsizePerThread(
   *sizePerThreadPtr = const_cast<unsigned *>(sizePerThread.data());
 }
 
-void mlirBlockedEncodingAttrGetthreadsPerWarp__(
-    MlirAttribute mlirBlockedEncodingAttr, unsigned **threadsPerWarp__Ptr,
-    unsigned *nthreadsPerWarp__s) {
-  ::llvm::ArrayRef<unsigned> threadsPerWarp__ =
+void mlirBlockedEncodingAttrGetthreadsPerWarp(
+    MlirAttribute mlirBlockedEncodingAttr, unsigned **threadsPerWarpPtr,
+    unsigned *nthreadsPerWarps) {
+  ::llvm::ArrayRef<unsigned> threadsPerWarp =
       llvm::cast<BlockedEncodingAttr>(unwrap(mlirBlockedEncodingAttr))
-          .getThreadsPerWarp__();
-  *nthreadsPerWarp__s = threadsPerWarp__.size();
-  *threadsPerWarp__Ptr = const_cast<unsigned *>(threadsPerWarp__.data());
+          .getThreadsPerWarp();
+  *nthreadsPerWarps = threadsPerWarp.size();
+  *threadsPerWarpPtr = const_cast<unsigned *>(threadsPerWarp.data());
 }
 
-void mlirBlockedEncodingAttrGetwarpsPerCTA__(
-    MlirAttribute mlirBlockedEncodingAttr, unsigned **warpsPerCTA__Ptr,
-    unsigned *nwarpsPerCTA__s) {
-  ::llvm::ArrayRef<unsigned> warpsPerCTA__ =
+void mlirBlockedEncodingAttrGetwarpsPerCTA(
+    MlirAttribute mlirBlockedEncodingAttr, unsigned **warpsPerCTAPtr,
+    unsigned *nwarpsPerCTAs) {
+  ::llvm::ArrayRef<unsigned> warpsPerCTA =
       llvm::cast<BlockedEncodingAttr>(unwrap(mlirBlockedEncodingAttr))
-          .getWarpsPerCTA__();
-  *nwarpsPerCTA__s = warpsPerCTA__.size();
-  *warpsPerCTA__Ptr = const_cast<unsigned *>(warpsPerCTA__.data());
+          .getWarpsPerCTA();
+  *nwarpsPerCTAs = warpsPerCTA.size();
+  *warpsPerCTAPtr = const_cast<unsigned *>(warpsPerCTA.data());
 }
 
 void mlirBlockedEncodingAttrGetorder(MlirAttribute mlirBlockedEncodingAttr,

@@ -720,8 +720,7 @@ struct AsyncCopyGlobalToLocalOpConversion
             loc,
             /*globalPtr=*/srcPtr, /*ldsPtr=*/coalescedShmemAddr[i],
             /*size=*/vecBytesVal, /*offset=*/b.i32_val(0),
-            /*aux=*/cacheModifiers, /*alias_scopes=*/nullptr,
-            /*noalias_scopes=*/nullptr, /*tbaa=*/nullptr);
+            /*aux=*/cacheModifiers);
         continue;
       }
 
@@ -734,7 +733,7 @@ struct AsyncCopyGlobalToLocalOpConversion
       rewriter.setInsertionPointToStart(loadBlock);
       rewriter.create<ROCDL::GlobalLoadLDSOp>(
           loc, srcPtr, coalescedShmemAddr[i], vecBytesVal,
-          /*offset=*/b.i32_val(0), cacheModifiers, nullptr, nullptr, nullptr);
+          /*offset=*/b.i32_val(0), cacheModifiers);
 
       rewriter.create<LLVM::BrOp>(loc, afterLoad);
       rewriter.setInsertionPointToStart(afterLoad);

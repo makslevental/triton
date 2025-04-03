@@ -155,7 +155,6 @@ set(_libs
   TritonAMDGPUDialectToLLVM
   TritonNVIDIAGPUToLLVM
   TritonTestAnalysis
-  TritonTestDialectTritonGPU
   NVGPUIR
   NVGPUToLLVM
 

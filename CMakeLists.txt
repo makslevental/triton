@@ -312,6 +312,9 @@ if(TRITON_BUILD_PYTHON_MODULE AND NOT WIN32)
   endif()
 
   target_link_options(triton PRIVATE ${PYTHON_LDFLAGS})
+  set_target_properties(triton PROPERTIES ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/python/triton/_C)
+  set_target_properties(triton PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/python/triton/_C)
+  set_target_properties(triton PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/python/triton/_C)
 endif()
 
 if(NOT TRITON_BUILD_PYTHON_MODULE)

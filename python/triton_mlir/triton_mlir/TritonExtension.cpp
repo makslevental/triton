@@ -236,7 +236,7 @@ void registerTritonDialectsAndPasses(mlir::DialectRegistry &registry) {
   // TritonAMDGPUToLLVM passes
   mlir::triton::registerConvertTritonAMDGPUToLLVM();
   mlir::triton::registerConvertBuiltinFuncToLLVM();
-  mlir::triton::registerDecomposeUnsupportedAMDConversions();
+  // mlir::triton::registerDecomposeUnsupportedAMDConversions();
   mlir::triton::registerOptimizeAMDLDSUsage();
 
   // TritonAMDGPUTransforms passes
@@ -433,7 +433,7 @@ std::string translateLLVMIRToASM(llvm::Module &module,
   // module->print(llvm::outs(), nullptr);
 
   // create machine
-  module.setTargetTriple(triple);
+  module.setTargetTriple(llvm::Triple(triple));
   auto machine = createTargetMachine(&module, proc, enable_fp_fusion, features);
   // set data layout
   module.setDataLayout(machine->createDataLayout());
@@ -600,7 +600,7 @@ std::string translateLLVMIRToASM(llvm::Module &module,
   // module->print(llvm::outs(), nullptr);
 
   // create machine
-  module.setTargetTriple(triple);
+  module.setTargetTriple(llvm::Triple(triple));
   auto machine = createTargetMachine(&module, proc, enable_fp_fusion, features);
   // set data layout
   module.setDataLayout(machine->createDataLayout());
@@ -975,7 +975,7 @@ void init_triton_passes_common(nb::module_ &&m) {
   ADD_PASS_WRAPPER_0("add_inliner", createInlinerPass);
   ADD_PASS_WRAPPER_0("add_canonicalizer", createCanonicalizerPass);
   ADD_PASS_WRAPPER_0("add_cse", createCSEPass);
-  ADD_PASS_WRAPPER_0("add_licm", createLoopInvariantCodeMotionPass);
+  // ADD_PASS_WRAPPER_0("add_licm", createLoopInvariantCodeMotionPass);
   ADD_PASS_WRAPPER_0("print_ir", createPrintIRPass);
 }
 
@@ -1064,11 +1064,11 @@ void init_triton_amd_passes_ttgpuir(nb::module_ &&m) {
           pm.addPass(createTritonAMDGPULowerInstructionSchedHintsPass(
               arch, numStages));
         });
-  m.def("add_decompose_unsupported_conversions", [](mlir::PassManager &pm,
-                                                    const std::string &arch) {
-    pm.addPass(
-        mlir::triton::AMD::createDecomposeUnsupportedConversionsPass(arch));
-  });
+  m.def("add_decompose_unsupported_conversions",
+        [](mlir::PassManager &pm, const std::string &arch) {
+          // pm.addPass(
+          //     mlir::triton::AMD::createDecomposeUnsupportedConversionsPass(arch));
+        });
   ADD_PASS_WRAPPER_2("add_optimize_lds_usage",
                      mlir::triton::AMD::createOptimizeLDSUsagePass,
                      const std::string &, int32_t);
@@ -1128,8 +1128,9 @@ void init_triton_amd(nb::module_ &m) {
     context.loadAllAvailableDialects();
   });
 
-  m.def("attach_target_triple",
-        [](llvm::Module *module) { module->setTargetTriple(amdTargetTriple); });
+  m.def("attach_target_triple", [](llvm::Module *module) {
+    module->setTargetTriple(llvm::Triple(amdTargetTriple));
+  });
 
   // Set target architecture ISA version
   m.def("set_isa_version", [](llvm::Module *module, const std::string &arch) {
