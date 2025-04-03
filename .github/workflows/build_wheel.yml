@@ -1,0 +1,241 @@
+name: "Build Triton Upstream bindings wheel"
+
+on:
+  pull_request:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+concurrency:
+  # A PR number if a pull request and otherwise the commit hash. This cancels
+  # queued and in-progress runs for the same PR (presubmit) or commit
+  # (postsubmit). The workflow name is prepended to avoid conflicts between
+  # different workflows.
+  group: ${{ github.workflow }}-${{ github.event.number || github.sha }}
+  cancel-in-progress: true
+
+env:
+  PIP_FIND_LINKS: "https://github.com/llvm/eudsl/releases/expanded_assets/latest https://github.com/makslevental/mlir-wheels/releases/expanded_assets/latest"
+
+jobs:
+  build:
+
+    strategy:
+      fail-fast: false
+      matrix:
+        runs-on: ["ubuntu-22.04", "macos-14", "macos-13"]
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+        include: [
+          # {runs-on: "ubuntu-22.04", name: "ubuntu_x86_64", os: "ubuntu", arch: x86_64},
+          {runs-on: "ubuntu-22.04", name: "manylinux_x86_64", os: "almalinux", arch: "x86_64", container: "quay.io/pypa/manylinux_2_28_x86_64"},
+          {runs-on: "macos-14", name: "macos_arm64", os: "macos", arch: arm64},
+          {runs-on: "macos-13", name: "macos_x86_64", os: "macos", arch: x86_64},
+        ]
+          # triton doesn't distribute a windows build of llvm...
+          # - name: "windows_x86_64"
+          #   runs-on: "windows-2019"
+          #   os: "windows"
+          #   arch: x86_64
+
+    runs-on: ${{ matrix.runs-on }}
+
+    name: "Build ${{ matrix.name }} ${{ matrix.python-version }}"
+
+    defaults:
+      run:
+        shell: bash
+
+    permissions:
+      id-token: write
+      contents: write
+
+    env:
+      # either the PR number or `branch-N` where N always increments
+      cache-key: "triton_mlir_circt_${{ matrix.name }}_${{ matrix.python-version }}_${{ format('{0}-{1}', github.ref_name, github.run_number) }}"
+
+    container:
+      image: ${{ matrix.container }}
+
+    steps:
+      - name: "Check out repository"
+        uses: actions/checkout@v4.2.2
+        with:
+          submodules: true
+
+      - name: "Setup base"
+        uses: ./.github/actions/setup_base
+        id: setup_base
+        with:
+          cache-key: ${{ env.cache-key }}
+          restore-key: "triton_mlir_${{ matrix.name }}_${{ matrix.python-version }}_"
+          os: ${{ matrix.os }}
+          arch: ${{ matrix.arch }}
+          python-version: ${{ matrix.python-version }}
+
+      - if: ${{ matrix.os == 'almalinux' }}
+        run: |
+          git config --global --add safe.directory /__w/triton/triton
+
+      - name: "Build"
+        run: |
+          
+          set -x
+          
+          export TRITON_SRC_DIR="$PWD"
+          
+          $python3_command -m pip -q download circt -f https://github.com/makslevental/circt/releases/expanded_assets/latest --no-deps
+          unzip -q circt*whl -d circt-install
+          export CMAKE_PREFIX_PATH="$PWD/circt-install"
+          
+          ccache -z
+
+          pushd "$TRITON_SRC_DIR/python/triton_mlir"
+          
+          $python3_command -m pip install pip-tools poetry
+          $python3_command -m piptools compile --all-build-deps -o ./build-reqs.txt ./pyproject.toml
+          $python3_command -m pip install -r ./build-reqs.txt
+          
+          $python3_command -m pip wheel . -w "$TRITON_SRC_DIR/wheelhouse" -v --no-build-isolation
+          if [[ "${{ matrix.os }}" == "almalinux" ]]; then
+            $python3_command -m pip install auditwheel 
+            $python3_command -m auditwheel repair $TRITON_SRC_DIR/wheelhouse/triton_mlir-*.whl -w $TRITON_SRC_DIR/wheelhouse
+          fi
+          
+          ccache -s
+          
+          popd
+
+      - name: Upload artifacts
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: triton_mlir_${{ matrix.name }}_${{ matrix.python-version }}_artifact
+          path: wheelhouse/triton_mlir*whl
+          if-no-files-found: warn
+
+      - name: "Save cache"
+        uses: actions/cache/save@v4.2.0
+        if: ${{ !cancelled() }}
+        with:
+          path: ${{ steps.setup_base.outputs.cache-dir }}
+          key: ${{ env.cache-key }}
+
+  test:
+
+    needs: [build]
+
+    strategy:
+      fail-fast: false
+      matrix:
+        runs-on: ["ubuntu-22.04", "macos-14", "macos-13"]
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+        include: [
+          # {runs-on: "ubuntu-22.04", name: "ubuntu_x86_64", os: "ubuntu", arch: x86_64},
+          {runs-on: "ubuntu-22.04", name: "manylinux_x86_64", os: "almalinux", arch: "x86_64", container: "quay.io/pypa/manylinux_2_28_x86_64"},
+          {runs-on: "macos-14", name: "macos_arm64", os: "macos", arch: arm64},
+          {runs-on: "macos-13", name: "macos_x86_64", os: "macos", arch: x86_64},
+        ]
+          # triton doesn't distribute a windows build of llvm...
+          # - name: "windows_x86_64"
+          #   runs-on: "windows-2019"
+          #   os: "windows"
+          #   arch: x86_64
+
+    runs-on: ${{ matrix.runs-on }}
+
+    name: "Test ${{ matrix.name }} ${{ matrix.python-version }}"
+
+    defaults:
+      run:
+        shell: bash
+
+    container:
+      image: ${{ matrix.container }}
+
+    steps:
+
+      - name: "Check out repository"
+        uses: actions/checkout@v4.2.2
+        with:
+          submodules: false
+          sparse-checkout: 'python/triton_mlir/test'
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4.1.8
+        with:
+          name: triton_mlir_${{ matrix.name }}_${{ matrix.python-version }}_artifact
+          path: wheelhouse
+
+      - name: "Install Python"
+        uses: actions/setup-python@v4
+        if: ${{ startsWith(matrix.os, 'macos') || startsWith(matrix.os, 'windows') || startsWith(matrix.os, 'ubuntu') }}
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: "Python deps"
+        shell: bash
+        run: |
+          set -x 
+          
+          python3_command=""
+          if (command -v python${{ matrix.python-version }} &> /dev/null); then
+            python3_command="python${{ matrix.python-version }}"
+          elif (command -v python3 &> /dev/null); then
+            python3_command="python3"
+          elif (command -v python &> /dev/null); then
+            python3_command="python"
+          fi 
+          echo "python3_command=$python3_command" >> $GITHUB_ENV
+
+      - name: "Test"
+        run: |
+          
+          $python3_command -m pip install pytest mlir-native-tools
+          if [[ "${{ matrix.os }}" == "ubuntu" ]] || [[ "${{ matrix.os }}" == "almalinux" ]]; then
+            $python3_command -m pip install hip-python --extra-index-url https://test.pypi.org/simple
+          fi
+          $python3_command -m pip install triton-mlir -f $PWD/wheelhouse
+          $python3_command -m pytest -rAs python/triton_mlir/test
+
+  release:
+
+    needs: [test]
+    runs-on: ubuntu-22.04
+    steps:
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4.1.8
+        with:
+          pattern: triton_mlir_*
+          path: wheelhouse
+          merge-multiple: true
+
+      - name: Release current commit
+        uses: ncipollo/release-action@v1.16.0
+        with:
+          artifacts: "wheelhouse/*.whl"
+          token: "${{ secrets.GITHUB_TOKEN }}"
+          tag: "latest"
+          name: "latest"
+          removeArtifacts: false
+          allowUpdates: true
+          replacesArtifacts: true
+          makeLatest: true
+          omitBody: true
+
+      - name: Release current commit
+        uses: ncipollo/release-action@v1.16.0
+        with:
+          owner: makslevental
+          repo: wheels
+          artifacts: "wheelhouse/*.whl"
+          token: "${{ secrets.WHEELS_RELEASE }}"
+          tag: "i"
+          name: "i"
+          removeArtifacts: false
+          allowUpdates: true
+          replacesArtifacts: true
+          makeLatest: true
+          omitBody: true
+          artifactErrorsFailBuild: false
