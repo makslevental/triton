@@ -12,6 +12,21 @@ class FuncOp;
 
 namespace mlir::triton::AMD {
 
+struct IntegerValueRangeWithMeet : IntegerValueRange {
+  using IntegerValueRange::getMaxRange;
+  using IntegerValueRange::IntegerValueRange;
+  IntegerValueRangeWithMeet(IntegerValueRange r) : IntegerValueRange(r) {}
+
+  static IntegerValueRangeWithMeet meet(const IntegerValueRangeWithMeet &lhs,
+                                        const IntegerValueRangeWithMeet &rhs);
+};
+
+struct IntegerValueRangeWithMeetLattice
+    : dataflow::Lattice<IntegerValueRangeWithMeet> {
+  using Lattice::Lattice;
+  void onUpdate(DataFlowSolver *solver) const override;
+};
+
 /// This struct (analysis) adapt's upstream's IntegerRangeAnalysis (inferring
 /// lower/upperbounds on integer constants) to our needs.
 /// Specifically there are 2 points of extension:
@@ -30,21 +45,28 @@ namespace mlir::triton::AMD {
 /// body values). Here we attempt to do better by analysis the loop bounds and
 /// "abstractly interpreting" the loop when loop bounds are statically known.
 /// See visitRegionSuccessors.
-struct TritonIntegerRangeAnalysis : dataflow::IntegerRangeAnalysis {
-  using dataflow::IntegerRangeAnalysis::IntegerRangeAnalysis;
+struct TritonIntegerRangeAnalysis : dataflow::SparseForwardDataFlowAnalysis<
+                                        IntegerValueRangeWithMeetLattice> {
   TritonIntegerRangeAnalysis(
       DataFlowSolver &solver,
       const DenseMap<Value, SetVector<Operation *>> &assumptions)
-      : dataflow::IntegerRangeAnalysis(solver), assumptions(assumptions) {}
+      : SparseForwardDataFlowAnalysis(solver), assumptions(assumptions) {}
 
-  void setToEntryState(dataflow::IntegerValueRangeLattice *lattice) override;
+  void setToEntryState(IntegerValueRangeWithMeetLattice *lattice) override;
 
   void initializeFuncOp(triton::FuncOp *funcOp);
 
+  std::optional<int64_t> maybeGetTripCount(LoopLikeOpInterface loop);
+
   LogicalResult visitOperation(
       Operation *op,
-      ArrayRef<const dataflow::IntegerValueRangeLattice *> operands,
-      ArrayRef<dataflow::IntegerValueRangeLattice *> resultsLattices) override;
+      ArrayRef<const IntegerValueRangeWithMeetLattice *> operands,
+      ArrayRef<IntegerValueRangeWithMeetLattice *> resultsLattices) override;
+
+  void visitNonControlFlowArguments(
+      Operation *op, const RegionSuccessor &successor,
+      ArrayRef<IntegerValueRangeWithMeetLattice *> argLattices,
+      unsigned firstIndex) override;
 
   /// This method (which overloads
   /// AbstractSparseForwardDataFlowAnalysis::visitRegionSuccessors)
@@ -108,7 +130,7 @@ struct TritonIntegerRangeAnalysis : dataflow::IntegerRangeAnalysis {
   /// through each loop. This is used in visitRegionSuccessors to end
   /// propagation when loopVisits[loop, lattice] reaches loopTripCounts[loop].
   llvm::SmallDenseMap<
-      std::pair<LoopLikeOpInterface, dataflow::IntegerValueRangeLattice *>,
+      std::pair<LoopLikeOpInterface, IntegerValueRangeWithMeetLattice *>,
       int64_t>
       loopVisits;
 
