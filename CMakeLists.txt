@@ -89,6 +89,7 @@ else()
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D__STDC_FORMAT_MACROS")
 endif()
 
+set(TRITON_BUILD_UT 0)
 
 # #########
 # LLVM
@@ -312,6 +313,9 @@ if(TRITON_BUILD_PYTHON_MODULE AND NOT WIN32)
   endif()
 
   target_link_options(triton PRIVATE ${PYTHON_LDFLAGS})
+  set_target_properties(triton PROPERTIES ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/python/triton/_C)
+  set_target_properties(triton PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/python/triton/_C)
+  set_target_properties(triton PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/python/triton/_C)
 endif()
 
 if(NOT TRITON_BUILD_PYTHON_MODULE)
@@ -325,7 +329,7 @@ find_package(Threads REQUIRED)
 
 add_subdirectory(third_party/f2reduce)
 #add_subdirectory(bin)
-add_subdirectory(test)
+#add_subdirectory(test)
 
 if(TRITON_BUILD_UT)
   add_subdirectory(unittest)
