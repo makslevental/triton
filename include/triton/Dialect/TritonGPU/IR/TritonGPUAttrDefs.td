@@ -251,7 +251,7 @@ When vec=2, elements are swizzled in pairs of 2.  In other words, the element at
     "unsigned":$perPhase,
     "unsigned":$maxPhase,
     ArrayRefParameter<"unsigned">:$order,
-    "CTALayoutAttr":$CTALayout
+    OptionalParameter<"CTALayoutAttr">:$CTALayout
   );
 
   let builders = [
@@ -406,7 +406,7 @@ def NVMMASharedEncodingAttr :
     "bool":$transposed,
     "unsigned":$elementBitWidth,
     "bool":$fp4Padded,
-    "CTALayoutAttr":$CTALayout
+    OptionalParameter<"CTALayoutAttr">:$CTALayout
   );
 
   let builders = [
@@ -814,7 +814,7 @@ for
     // CTALayout is optional in the textual IR.  If omitted, we infer it to be a
     // single CTA (so CTAsPerCGA = [1,...,1], CTASplitNum = [1,...,1],
     // CTAOrder=[n,n-1,...,0]).
-    "CTALayoutAttr":$CTALayout
+    OptionalParameter<"CTALayoutAttr">:$CTALayout
   );
   let genVerifyDecl = 1;
 
@@ -1011,7 +1011,7 @@ V [ 0,4,8...60   1,5...61     2,6...62     3,7...63    ]   [ 128,132...188  129,
     "unsigned":$MDim,
     "unsigned":$NDim,
     "bool":$isTransposed,
-    "CTALayoutAttr":$CTALayout
+    OptionalParameter<"CTALayoutAttr">:$CTALayout
   );
 
   let extraClassDeclaration = extraDistributedDeclaration # [{
@@ -1128,7 +1128,7 @@ Row |
     "unsigned": $version,
     "bool":$isTransposed,
     ArrayRefParameter<"unsigned">:$warpsPerCTA,
-    "CTALayoutAttr":$CTALayout
+    OptionalParameter<"CTALayoutAttr">:$CTALayout
   );
 
   let genVerifyDecl = 1;
@@ -1233,7 +1233,7 @@ For example, the matrix L corresponding to blockTileSize=[32,16] is:
     "unsigned":$versionMajor,
     "unsigned":$versionMinor,
     ArrayRefParameter<"unsigned">:$warpsPerCTA,
-    "CTALayoutAttr":$CTALayout,
+    OptionalParameter<"CTALayoutAttr">:$CTALayout,
     ArrayRefParameter<"unsigned">:$instrShape
   );
 

@@ -483,11 +483,11 @@ struct FoldTrueCmpIOp : OpRewritePattern<arith::CmpIOp> {
   LogicalResult matchAndRewrite(arith::CmpIOp cmpOp,
                                 PatternRewriter &rewriter) const override {
     if (cmpIIsStaticallyTrue(*solver, cmpOp)) {
-      if (failed(mlir::dataflow::maybeReplaceWithConstant(*solver, rewriter,
-                                                          cmpOp.getResult()))) {
-        LDBG("failed to replace with constant op: " << cmpOp);
-        return failure();
-      }
+      // if (failed(mlir::dataflow::maybeReplaceWithConstant(*solver, rewriter,
+      //                                                     cmpOp.getResult()))) {
+      //   LDBG("failed to replace with constant op: " << cmpOp);
+      //   return failure();
+      // }
     } else {
       return failure();
     }
