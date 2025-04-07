@@ -5,16 +5,16 @@ auto nbBlockedEncodingAttr = mlir_attribute_subclass(
 nbBlockedEncodingAttr.def_staticmethod(
     "get",
     [](std::vector<unsigned> &sizePerThread,
-       std::vector<unsigned> &threadsPerWarp__,
-       std::vector<unsigned> &warpsPerCTA__, std::vector<unsigned> &order,
+       std::vector<unsigned> &threadsPerWarp,
+       std::vector<unsigned> &warpsPerCTA, std::vector<unsigned> &order,
        std::optional<MlirAttribute> CTALayout, MlirContext context) {
       if (!CTALayout) {
         auto rank = sizePerThread.size();
         CTALayout = mlirCTALayoutAttrAttributeGetDefault(rank, context);
       }
       return mlirBlockedEncodingAttrAttributeGet(
-          sizePerThread.data(), sizePerThread.size(), threadsPerWarp__.data(),
-          threadsPerWarp__.size(), warpsPerCTA__.data(), warpsPerCTA__.size(),
+          sizePerThread.data(), sizePerThread.size(), threadsPerWarp.data(),
+          threadsPerWarp.size(), warpsPerCTA.data(), warpsPerCTA.size(),
           order.data(), order.size(),
           CTALayout.has_value() ? *CTALayout : wrap(CTALayoutAttr()), context);
     },
@@ -33,22 +33,22 @@ nbBlockedEncodingAttr.def_property_readonly(
 
 nbBlockedEncodingAttr.def_property_readonly(
     "threads_per_warp__", [](MlirAttribute self) {
-      unsigned nthreadsPerWarp__s;
-      unsigned *threadsPerWarp__Ptr;
-      mlirBlockedEncodingAttrGetthreadsPerWarp__(self, &threadsPerWarp__Ptr,
-                                                 &nthreadsPerWarp__s);
-      return std::vector<unsigned>{threadsPerWarp__Ptr,
-                                   threadsPerWarp__Ptr + nthreadsPerWarp__s};
+      unsigned nthreadsPerWarps;
+      unsigned *threadsPerWarpPtr;
+      mlirBlockedEncodingAttrGetthreadsPerWarp(self, &threadsPerWarpPtr,
+                                                 &nthreadsPerWarps);
+      return std::vector<unsigned>{threadsPerWarpPtr,
+                                   threadsPerWarpPtr + nthreadsPerWarps};
     });
 
 nbBlockedEncodingAttr.def_property_readonly(
     "warps_per_cta__", [](MlirAttribute self) {
-      unsigned nwarpsPerCTA__s;
-      unsigned *warpsPerCTA__Ptr;
-      mlirBlockedEncodingAttrGetwarpsPerCTA__(self, &warpsPerCTA__Ptr,
-                                              &nwarpsPerCTA__s);
-      return std::vector<unsigned>{warpsPerCTA__Ptr,
-                                   warpsPerCTA__Ptr + nwarpsPerCTA__s};
+      unsigned nwarpsPerCTAs;
+      unsigned *warpsPerCTAPtr;
+      mlirBlockedEncodingAttrGetwarpsPerCTA(self, &warpsPerCTAPtr,
+                                              &nwarpsPerCTAs);
+      return std::vector<unsigned>{warpsPerCTAPtr,
+                                   warpsPerCTAPtr + nwarpsPerCTAs};
     });
 
 nbBlockedEncodingAttr.def_property_readonly("order", [](MlirAttribute self) {

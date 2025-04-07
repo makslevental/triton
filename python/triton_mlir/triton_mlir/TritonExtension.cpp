@@ -14,6 +14,7 @@
 #include "lld/Common/Driver.h"
 #include "mlir-c/IR.h"
 #include "mlir-c/Support.h"
+#include "mlir/Bindings/Python/Diagnostics.h"
 #include "mlir/Bindings/Python/NanobindAdaptors.h"
 #include "mlir/CAPI/IR.h"
 #include "mlir/CAPI/Registration.h"
@@ -70,6 +71,7 @@
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/TargetSelect.h"
+#include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
 #include "llvm/TargetParser/TargetParser.h"
@@ -91,10 +93,10 @@ namespace mlir::triton::AMD {
 enum class ISAFamily;
 }
 namespace mlir::test {
-void registerTestAliasPass();
-void registerTestAlignmentPass();
-void registerTestAllocationPass();
-void registerTestMembarPass();
+// void registerTestAliasPass();
+// void registerTestAlignmentPass();
+// void registerTestAllocationPass();
+// void registerTestMembarPass();
 } // namespace mlir::test
 
 namespace llvm {
@@ -207,10 +209,10 @@ void registerTritonDialectsAndPasses(mlir::DialectRegistry &registry) {
   mlir::registerLLVMDIScope();
   mlir::registerTritonNvidiaGPUPasses();
   mlir::registerTritonPasses();
-  mlir::test::registerTestAliasPass();
-  mlir::test::registerTestAlignmentPass();
-  mlir::test::registerTestAllocationPass();
-  mlir::test::registerTestMembarPass();
+  // mlir::test::registerTestAliasPass();
+  // mlir::test::registerTestAlignmentPass();
+  // mlir::test::registerTestAllocationPass();
+  // mlir::test::registerTestMembarPass();
   mlir::triton::gpu::registerTritonGPUPasses();
   mlir::triton::gpu::registerAllocateSharedMemoryPass();
   mlir::triton::registerConvertNVGPUToLLVMPass();
@@ -221,7 +223,7 @@ void registerTritonDialectsAndPasses(mlir::DialectRegistry &registry) {
   // TritonAMDGPUToLLVM passes
   mlir::triton::registerConvertTritonAMDGPUToLLVM();
   mlir::triton::registerConvertBuiltinFuncToLLVM();
-  mlir::triton::registerDecomposeUnsupportedAMDConversions();
+  // mlir::triton::registerDecomposeUnsupportedAMDConversions();
   mlir::triton::registerOptimizeAMDLDSUsage();
 
   // TritonAMDGPUTransforms passes
@@ -418,7 +420,7 @@ std::string translateLLVMIRToASM(llvm::Module &module,
   // module->print(llvm::outs(), nullptr);
 
   // create machine
-  module.setTargetTriple(triple);
+  module.setTargetTriple(llvm::Triple(triple));
   auto machine = createTargetMachine(&module, proc, enable_fp_fusion, features);
   // set data layout
   module.setDataLayout(machine->createDataLayout());
@@ -585,7 +587,7 @@ std::string translateLLVMIRToASM(llvm::Module &module,
   // module->print(llvm::outs(), nullptr);
 
   // create machine
-  module.setTargetTriple(triple);
+  module.setTargetTriple(llvm::Triple(triple));
   auto machine = createTargetMachine(&module, proc, enable_fp_fusion, features);
   // set data layout
   module.setDataLayout(machine->createDataLayout());
@@ -737,8 +739,8 @@ void init_triton_llvm(nb::module_ &m) {
     llvm::TargetOptions opt;
     // Target machine is only used to create the data layout.
     std::unique_ptr<llvm::TargetMachine> machine{target->createTargetMachine(
-        triple, proc, features, opt, llvm::Reloc::PIC_, std::nullopt,
-        llvm::CodeGenOptLevel::None)};
+        llvm::Triple(triple), proc, features, opt, llvm::Reloc::PIC_,
+        std::nullopt, llvm::CodeGenOptLevel::None)};
     // set data layout
     mod->setDataLayout(machine->createDataLayout());
   });
@@ -755,8 +757,8 @@ void init_triton_llvm(nb::module_ &m) {
         auto flagList = mlir::triton::tools::getStrEnv("DISABLE_LLVM_OPT");
         if (!flagList.empty()) {
           auto options = llvm::cl::getRegisteredOptions();
-          llvm::SmallVector<llvm::StringRef, 3> split;
-          llvm::StringRef(flagList.c_str()).split(split, ',');
+          llvm::SmallVector<StringRef, 3> split;
+          StringRef(flagList.c_str()).split(split, ',');
           for (auto flag : split) {
             auto optIt = options.find(flag);
             if (optIt != options.end()) {
@@ -919,7 +921,7 @@ void init_triton_llvm(nb::module_ &m) {
         std::string message = "Failed to parse library at " + path;
         throw std::invalid_argument(message);
       }
-      libMod->setTargetTriple(dstMod->getTargetTriple());
+      libMod->setTargetTriple(llvm::Triple(dstMod->getTargetTriple()));
       libMod->setDataLayout(dstMod->getDataLayout());
 
       std::unordered_set<std::string> externalFns;
@@ -960,7 +962,7 @@ void init_triton_passes_common(nb::module_ &&m) {
   ADD_PASS_WRAPPER_0("add_inliner", createInlinerPass);
   ADD_PASS_WRAPPER_0("add_canonicalizer", createCanonicalizerPass);
   ADD_PASS_WRAPPER_0("add_cse", createCSEPass);
-  ADD_PASS_WRAPPER_0("add_licm", createLoopInvariantCodeMotionPass);
+  ADD_PASS_WRAPPER_0("add_licm", mlir::createLoopInvariantCodeMotionPass);
   ADD_PASS_WRAPPER_0("print_ir", createPrintIRPass);
 }
 
@@ -971,6 +973,8 @@ void init_triton_passes_ttir(nb::module_ &&m) {
   ADD_PASS_WRAPPER_0("add_rewrite_tensor_pointer",
                      createRewriteTensorPointerPass);
   ADD_PASS_WRAPPER_0("add_loop_unroll", createLoopUnrollPass);
+  ADD_PASS_WRAPPER_0("add_triton_licm",
+                     mlir::triton::createLoopInvariantCodeMotionPass);
   ADD_PASS_WRAPPER_4("add_convert_to_ttgpuir",
                      createConvertTritonToTritonGPUPass, const std::string &,
                      int, int, int);
@@ -981,7 +985,10 @@ void init_triton_passes_ttgpuir(nb::module_ &&m) {
   ADD_PASS_WRAPPER_0("add_coalesce", createTritonGPUCoalesce);
   ADD_PASS_WRAPPER_0("add_optimize_thread_locality",
                      createTritonGPUOptimizeThreadLocality);
+  ADD_PASS_WRAPPER_0("add_hoist_tmem_alloc", createTritonGPUHoistTMEMAlloc);
   ADD_PASS_OPTION_WRAPPER_2("add_pipeline", createTritonGPUPipeline, int, bool);
+  ADD_PASS_OPTION_WRAPPER_1("add_warp_specialize",
+                            createTritonGPUAutomaticWarpSpecialization, int);
   ADD_PASS_WRAPPER_0("add_prefetch", createTritonGPUPrefetch);
   ADD_PASS_WRAPPER_0("add_accelerate_matmul", createTritonGPUAccelerateMatmul);
   ADD_PASS_WRAPPER_0("add_reorder_instructions",
@@ -1049,11 +1056,6 @@ void init_triton_amd_passes_ttgpuir(nb::module_ &&m) {
           pm.addPass(createTritonAMDGPULowerInstructionSchedHintsPass(
               arch, numStages));
         });
-  m.def("add_decompose_unsupported_conversions", [](mlir::PassManager &pm,
-                                                    const std::string &arch) {
-    pm.addPass(
-        mlir::triton::AMD::createDecomposeUnsupportedConversionsPass(arch));
-  });
   ADD_PASS_WRAPPER_2("add_optimize_lds_usage",
                      mlir::triton::AMD::createOptimizeLDSUsagePass,
                      const std::string &, int32_t);
@@ -1062,6 +1064,10 @@ void init_triton_amd_passes_ttgpuir(nb::module_ &&m) {
                      const std::string, int, int);
   ADD_PASS_WRAPPER_0("add_optimize_epilogue",
                      mlir::createTritonAMDGPUOptimizeEpiloguePass);
+  m.def("add_hoist_layout_conversions", [](mlir::PassManager &pm) {
+    pm.addNestedPass<mlir::triton::FuncOp>(
+        mlir::createTritonAMDGPUHoistLayoutConversionsPass());
+  });
   m.def("add_canonicalize_pointers", [](mlir::PassManager &pm) {
     pm.addNestedPass<mlir::triton::FuncOp>(
         mlir::createTritonAMDGPUCanonicalizePointersPass());
@@ -1071,10 +1077,20 @@ void init_triton_amd_passes_ttgpuir(nb::module_ &&m) {
                      const std::string &);
   ADD_PASS_WRAPPER_0("add_reorder_instructions",
                      mlir::createTritonAMDGPUReorderInstructionsPass);
-  ADD_PASS_WRAPPER_0("add_block_pingpong",
-                     mlir::createTritonAMDGPUBlockPingpongPass);
-  ADD_PASS_WRAPPER_3("add_stream_pipeline",
-                     mlir::createTritonAMDGPUStreamPipelinePass, int, int, int);
+  ADD_PASS_WRAPPER_0("add_fold_true_cmpi",
+                     mlir::createTritonAMDGPUFoldTrueCmpIPass);
+  ADD_PASS_WRAPPER_1("add_block_pingpong",
+                     mlir::createTritonAMDGPUBlockPingpongPass, int32_t);
+  ADD_PASS_WRAPPER_4("add_stream_pipeline",
+                     mlir::createTritonAMDGPUStreamPipelinePass, int, int, int,
+                     bool);
+  ADD_PASS_WRAPPER_1("add_coalesce_async_copy",
+                     mlir::createTritonAMDGPUCoalesceAsyncCopyPass,
+                     std::string);
+  m.def("add_in_thread_transpose", [](mlir::PassManager &pm) {
+    pm.addNestedPass<mlir::triton::FuncOp>(
+        mlir::createTritonAMDGPUInThreadTransposePass());
+  });
 }
 
 void addControlConstant(llvm::Module *module, const char *name,
@@ -1113,8 +1129,9 @@ void init_triton_amd(nb::module_ &m) {
     context.loadAllAvailableDialects();
   });
 
-  m.def("attach_target_triple",
-        [](llvm::Module *module) { module->setTargetTriple(amdTargetTriple); });
+  m.def("attach_target_triple", [](llvm::Module *module) {
+    module->setTargetTriple(llvm::Triple(amdTargetTriple));
+  });
 
   // Set target architecture ISA version
   m.def("set_isa_version", [](llvm::Module *module, const std::string &arch) {
@@ -1735,8 +1752,9 @@ void init_triton_ir(nb::module_ &m) {
              return nb::str(ret.getValue().str().c_str());
            });
 
+  // dynamic_attr is used to transfer ownership of the MLIR context to the
+  // module
   nb::class_<ModuleOp, OpState>(m, "module", nb::dynamic_attr())
-      // Triton uses a dynamic_attr to "transfer" context to the module???
       .def_prop_ro("context", &ModuleOp::getContext)
       .def("dump", &ModuleOp::dump)
       .def("str",
@@ -1847,7 +1865,7 @@ void init_triton_ir(nb::module_ &m) {
       ret::take_ownership);
 
   nb::class_<FuncOp, OpState>(m, "function")
-      // .def_prop_ro("attrs", &ir::function::attrs)
+      // .def_property_readonly("attrs", &ir::function::attrs)
       // .def("add_attr", &ir::function::add_attr);
       .def("args",
            [](FuncOp &self, unsigned idx) -> BlockArgument {
@@ -1892,13 +1910,15 @@ void init_triton_ir(nb::module_ &m) {
   nb::class_<PassManager>(m, "pass_manager")
       .def(nb::init<MLIRContext *>())
       .def("enable_debug",
-           [](PassManager &self) {
+           [](PassManager &self) -> bool {
              auto *context = self.getContext();
              bool haveDump = ::triton::tools::getBoolEnv("MLIR_ENABLE_DUMP");
              std::string funcToDump;
              if (!haveDump) {
                funcToDump = triton::tools::getStrEnv("MLIR_ENABLE_DUMP");
-               if (!funcToDump.empty())
+               bool isEnvValueBool =
+                   triton::tools::isEnvValueBool(funcToDump).has_value();
+               if (!funcToDump.empty() && !isEnvValueBool)
                  haveDump = true;
              }
              if (haveDump) {
@@ -1927,6 +1947,7 @@ void init_triton_ir(nb::module_ &m) {
                    /*printAfterOnlyOnFailure*/ true, mlir_dumps_or_dbgs(),
                    printingFlags);
              }
+             return haveDump;
            })
       .def("get_pipeline_str",
            [](PassManager &self) {
@@ -1940,6 +1961,8 @@ void init_triton_ir(nb::module_ &m) {
         // diagnostics
 
         auto *context = mod.getContext();
+        if (::triton::tools::getBoolEnv("MLIR_DISABLE_MULTITHREADING"))
+          context->disableMultithreading();
 
         auto reproducerPath =
             triton::tools::getStrEnv("TRITON_REPRODUCER_PATH");
@@ -2167,16 +2190,17 @@ NB_MODULE(_triton, m) {
         .release();
   });
 
-  m.def("unwrap_c_op", [](MlirOperation mlirMaybeModuleOp) {
-    Operation *maybeModOp = unwrap(mlirMaybeModuleOp);
-    if (auto modOp = llvm::dyn_cast<ModuleOp>(maybeModOp))
-      return modOp;
-    throw std::runtime_error("operation isn't ModuleOp");
-  });
+  m.def(
+      "unwrap_c_op",
+      [](MlirOperation mlirOperation) {
+        Operation *operation = unwrap(mlirOperation);
+        return operation;
+      },
+      nb::rv_policy::reference);
 
-  m.def("wrap_op", [](mlir::ModuleOp moduleOp) {
-    nb::object capsule = nb::steal<nb::object>(
-        mlirPythonOperationToCapsule(wrap(moduleOp.getOperation())));
+  m.def("wrap_op", [](mlir::Operation *op) {
+    nb::object capsule =
+        nb::steal<nb::object>(mlirPythonOperationToCapsule(wrap(op)));
     return nb::module_::import_(MAKE_MLIR_PYTHON_QUALNAME("ir"))
         .attr("Operation")
         .attr(MLIR_PYTHON_CAPI_FACTORY_ATTR)(capsule)

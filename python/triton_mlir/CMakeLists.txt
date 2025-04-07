@@ -136,10 +136,10 @@ set(_libs
   TritonAMDGPUTransforms
   TritonAMDGPUDialectToLLVM
   TritonNVIDIAGPUToLLVM
-  TritonTestAnalysis
-  TritonTestDialectTritonGPU
-  NVGPUIR
-  NVGPUToLLVM
+  TritonAMDAnalysis
+#  TritonTestAnalysis
+#  NVGPUIR
+#  NVGPUToLLVM
 
   ${_all_libs}
   ${_dialect_libs}

@@ -73,7 +73,6 @@ def test_run_vector_add_bare(ctx: MLIRContext, backend: HIPBackend):
         v14 = tt.splat(output, (BLOCK_SIZE,))
         v15 = tt.addptr(v14, v4)
         tt.store(v15, v13, v6)
-        tt.return_(srcs=[])
 
     vector_add.emit()
     ctx.module.operation.verify()
@@ -191,7 +190,6 @@ def test_run_vector_add_np(ctx: MLIRContext, backend: HIPBackend):
         v14 = tt.splat(output, (BLOCK_SIZE,))
         v15 = tt.addptr(v14, v4)
         tt.store(v15, v13, v6)
-        tt.return_(srcs=[])
 
     vector_add.emit()
     ctx.module.operation.verify()
@@ -282,8 +280,6 @@ def test_run_vector_add_np_sure(ctx: MLIRContext, backend: HIPBackend):
         y = tt.load(y_ptr + offsets, mask)
         output = x + y
         tt.store(output_ptr + offsets, output, mask)
-
-        tt.return_(srcs=[])
 
     vector_add.emit()
     ctx.module.operation.verify()

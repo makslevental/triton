@@ -2,6 +2,7 @@ name: "Build Triton Upstream bindings wheel"
 
 on:
   pull_request:
+  workflow_dispatch:
   push:
     branches:
       - main
@@ -81,11 +82,17 @@ jobs:
           
           set -x
           
-          export TRITON_SRC_DIR="$PWD"
+          pushd python/triton_mlir
+          $python3_command -m pip install setuptools wheel
+          LLVM_URL="$($python3_command llvm_url.py)"
+          popd
           
-          $python3_command -m pip -q download circt -f https://github.com/makslevental/circt/releases/expanded_assets/latest --no-deps
-          unzip -q circt*whl -d circt-install
-          export CMAKE_PREFIX_PATH="$PWD/circt-install"
+          curl -sLO $LLVM_URL
+          LLVM_NAME=$(basename "$LLVM_URL" ".tar.gz")
+          tar xf $LLVM_NAME.tar.gz
+          export CMAKE_PREFIX_PATH="$PWD/$LLVM_NAME"
+          
+          export TRITON_SRC_DIR="$PWD"
           
           ccache -z
 
@@ -195,46 +202,46 @@ jobs:
             $python3_command -m pip install hip-python --extra-index-url https://test.pypi.org/simple
           fi
           $python3_command -m pip install triton-mlir -f $PWD/wheelhouse
-          $python3_command - m pytest -rAs python/triton_mlir/test
+          $python3_command -m pytest -rAs python/triton_mlir/test
 
-  release:
-
-    needs: [test]
-    runs-on: ubuntu-22.04
-    steps:
-
-      - name: Download artifacts
-        uses: actions/download-artifact@v4.1.8
-        with:
-          pattern: triton_mlir_*
-          path: wheelhouse
-          merge-multiple: true
-
-      - name: Release current commit
-        uses: ncipollo/release-action@v1.16.0
-        with:
-          artifacts: "wheelhouse/*.whl"
-          token: "${{ secrets.GITHUB_TOKEN }}"
-          tag: "latest"
-          name: "latest"
-          removeArtifacts: false
-          allowUpdates: true
-          replacesArtifacts: true
-          makeLatest: true
-          omitBody: true
-
-      - name: Release current commit
-        uses: ncipollo/release-action@v1.16.0
-        with:
-          owner: makslevental
-          repo: wheels
-          artifacts: "wheelhouse/*.whl"
-          token: "${{ secrets.WHEELS_RELEASE }}"
-          tag: "i"
-          name: "i"
-          removeArtifacts: false
-          allowUpdates: true
-          replacesArtifacts: true
-          makeLatest: true
-          omitBody: true
-          artifactErrorsFailBuild: false
+#  release:
+#
+#    needs: [test]
+#    runs-on: ubuntu-22.04
+#    steps:
+#
+#      - name: Download artifacts
+#        uses: actions/download-artifact@v4.1.8
+#        with:
+#          pattern: triton_mlir_*
+#          path: wheelhouse
+#          merge-multiple: true
+#
+#      - name: Release current commit
+#        uses: ncipollo/release-action@v1.16.0
+#        with:
+#          artifacts: "wheelhouse/*.whl"
+#          token: "${{ secrets.GITHUB_TOKEN }}"
+#          tag: "latest"
+#          name: "latest"
+#          removeArtifacts: false
+#          allowUpdates: true
+#          replacesArtifacts: true
+#          makeLatest: true
+#          omitBody: true
+#
+#      - name: Release current commit
+#        uses: ncipollo/release-action@v1.16.0
+#        with:
+#          owner: makslevental
+#          repo: wheels
+#          artifacts: "wheelhouse/*.whl"
+#          token: "${{ secrets.WHEELS_RELEASE }}"
+#          tag: "i"
+#          name: "i"
+#          removeArtifacts: false
+#          allowUpdates: true
+#          replacesArtifacts: true
+#          makeLatest: true
+#          omitBody: true
+#          artifactErrorsFailBuild: false
