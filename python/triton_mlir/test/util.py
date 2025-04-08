@@ -179,7 +179,7 @@ backend = pytest.fixture(backend_)
 
 def normalize_ssa(ssa: str | Value):
     if isinstance(ssa, Value):
-        ssa = ssa.get_name()
+        ssa = ssa.get_name(use_name_loc_as_prefix=True)
     if ssa[1].isnumeric():
         ssa = ssa.replace("%", "v")
     else:
@@ -209,6 +209,8 @@ _integer_overflow_flags_reg = re.compile(r"#arith.overflow<(.*?)>")
 
 
 def map_attr(attr):
+    if attr in ATTR_ALIASES:
+        return ATTR_ALIASES[attr]
     attr = attr.maybe_downcast()
     if isinstance(attr, (IntegerAttr, BoolAttr, FloatAttr)):
         return attr.value
@@ -277,6 +279,7 @@ def map_type(type):
 
 indent = 0
 OUTPUT_BUF = io.StringIO()
+ATTR_ALIASES = {}
 
 
 def get_init_args(opview):
@@ -542,7 +545,7 @@ PROLOG = """\
 import numpy as np
 from triton_mlir import types as _types
 from triton_mlir.extras.context import RAIIMLIRContextModule
-from triton_mlir.dialects import tt as ttpp, ttg, scf, llvm, _tt_ops_gen as tt, amdgpu
+from triton_mlir.dialects import tt as ttpp, ttg, scf, llvm, _tt_ops_gen as tt, amdgpu, rocdl
 from triton_mlir.dialects.arith import IntegerOverflowFlags
 from triton_mlir.ir import ArrayAttr, Type, Attribute
 from triton_mlir.extras.dialects.ext import arith
@@ -552,6 +555,16 @@ from triton_mlir.extras import types as T
 
 ctx = RAIIMLIRContextModule()
 """
+
+
+def print_attr_alias(attr_line: str):
+    print(attr_line)
+    alias_name, attr_str = attr_line.split(" = ", maxsplit=1)
+    assert alias_name.startswith("#")
+    alias_name = alias_name[1:]
+    attr = Attribute.parse(attr_str)
+    print(f"{alias_name} = {map_attr(attr)}", file=OUTPUT_BUF)
+    ATTR_ALIASES[attr] = alias_name
 
 
 def print_prolog():

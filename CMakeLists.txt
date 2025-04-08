@@ -20,7 +20,7 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 # Options
 option(TRITON_BUILD_PYTHON_MODULE "Build Python Triton bindings" OFF)
 option(TRITON_BUILD_PROTON "Build the Triton Proton profiler" ON)
-option(TRITON_BUILD_UT "Build C++ Triton Unit Tests" ON)
+option(TRITON_BUILD_UT "Build C++ Triton Unit Tests" OFF)
 option(TRITON_BUILD_WITH_CCACHE "Build with ccache (if available)" ON)
 set(TRITON_CODEGEN_BACKENDS "" CACHE STRING "Enable different codegen backends")
 
@@ -89,7 +89,6 @@ else()
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D__STDC_FORMAT_MACROS")
 endif()
 
-set(TRITON_BUILD_UT 0)
 
 # #########
 # LLVM
@@ -328,8 +327,8 @@ endif()
 find_package(Threads REQUIRED)
 
 add_subdirectory(third_party/f2reduce)
-#add_subdirectory(bin)
-#add_subdirectory(test)
+add_subdirectory(bin)
+add_subdirectory(test)
 
 if(TRITON_BUILD_UT)
   add_subdirectory(unittest)
