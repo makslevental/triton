@@ -110,8 +110,8 @@ def launch_kernel(
     threads_per_block_x,
     threads_per_block_y,
     threads_per_block_z,
-    stream,
     shared_memory,
+    stream,
     *args,
 ):
     from triton_mlir import chip
@@ -247,7 +247,7 @@ def map_attr(attr):
     if isinstance(attr, ttg.SwizzledSharedEncodingAttr):
         return f"ttg.SwizzledSharedEncodingAttr.get(vec={attr.vec}, per_phase={attr.per_phase}, max_phase={attr.max_phase}, order={attr.order})"
     if isinstance(attr, ttg.DotOperandEncodingAttr):
-        return f"ttg.DotOperandEncodingAttr.get(op_idx={attr.op_idx}, parent={map_attr(attr.parent)})"
+        return f"ttg.DotOperandEncodingAttr.get(op_idx={attr.op_idx}, parent={map_attr(attr.parent)}, k_width={attr.k_width})"
     if isinstance(attr, ttg.SharedMemorySpaceAttr):
         return f"ttg.SharedMemorySpaceAttr.get()"
     if isinstance(attr, ttg.SharedMemorySpaceAttr):

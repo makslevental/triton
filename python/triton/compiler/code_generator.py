@@ -504,7 +504,13 @@ class CodeGenerator(ast.NodeVisitor):
         arg_values = self.prototype.deserialize(self.fn)
         # bind arguments to symbols
         for arg_name, arg_value in zip(arg_names, arg_values):
+            if "constexpr" not in str(arg_value):
+                print(f"{arg_name}='runtime'")
+            else:
+                print(f"{arg_name}={repr(arg_value)}")
             self.set_value(arg_name, arg_value)
+        print()
+
         insert_pt = self.builder.get_insertion_block()
         self.builder.set_insertion_point_to_start(entry)
         # visit function body
