@@ -26,14 +26,14 @@
   ],
   "enable_fp_fusion": true,
   "launch_cooperative_grid": false,
-  "matrix_instr_nonkdim": 0,
+  "matrix_instr_nonkdim": 16,
   "kpack": 1,
   "allow_flush_denorm": false,
   "max_num_imprecise_acc_default": 0,
   "backend_name": "hip",
-  "schedule_hint": "none",
+  "schedule_hint": "local-prefetch",
   "warp_size": 32,
   "triton_version": "3.3.0",
-  "shared": 32768,
+  "shared": 65536,
   "name": "matmul_kernel"
 }
