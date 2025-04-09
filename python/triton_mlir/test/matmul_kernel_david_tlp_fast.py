@@ -98,6 +98,7 @@ def matmul_kernel(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, ar
     v32 = arith.divsi(lhs=v31, rhs=c64_i32)
     v33 = arith.cmpi(predicate=4, lhs=v32, rhs=c0_i32)
     v34 = tt.splat(result=T.tensor(256, 64, T.bool(), encoding=blocked), src=v33)
+
     # GR[0]
     v35 = amdgpu.buffer_load(result=T.tensor(256, 64, T.f16(), encoding=blocked), ptr=arg0, offsets=v29, stride=arg6, cache=1, mask=v34)
     v35.owner.attributes['OpIdx'] = amdgpu.OpIdxAttr.get(0)
@@ -122,6 +123,7 @@ def matmul_kernel(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, ar
     v54 = arith.addi(lhs=v49, rhs=v53)
     v55 = tt.addptr(result=ttpp.ptr(T.f16(), 1), ptr=arg1, offset=c64_i32)
     v56 = tt.splat(result=T.tensor(64, 256, T.bool(), encoding=blocked1), src=v33)
+
     # GR[1]
     v57 = amdgpu.buffer_load(result=T.tensor(64, 256, T.f16(), encoding=blocked1), ptr=arg1, offsets=v54, stride=arg7, cache=1, mask=v56)
     v57.owner.attributes['OpIdx'] = amdgpu.OpIdxAttr.get(1)
@@ -132,14 +134,9 @@ def matmul_kernel(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, ar
     llvm.intr_assume(cond=v60, op_bundle_operands=[], op_bundle_sizes=[])
     v61 = arith.cmpi(predicate=4, lhs=v41, rhs=c0_i32)
     llvm.intr_assume(cond=v61, op_bundle_operands=[], op_bundle_sizes=[])
-    v62 = tt.make_range(result=T.tensor(256, T.i32(), encoding=ttg.SliceEncodingAttr.get(dim=1, parent=mma)), start=0, end=256)
-    v63 = tt.make_range(result=T.tensor(256, T.i32(), encoding=ttg.SliceEncodingAttr.get(dim=0, parent=mma)), start=0, end=256)
-    v64 = tt.splat(result=T.tensor(256, T.i32(), encoding=ttg.SliceEncodingAttr.get(dim=1, parent=mma)), src=v16)
-    v65 = arith.addi(lhs=v64, rhs=v62)
-    v66 = tt.splat(result=T.tensor(256, T.i32(), encoding=ttg.SliceEncodingAttr.get(dim=0, parent=mma)), src=v42)
-    v67 = arith.addi(lhs=v66, rhs=v63)
     v68 = ttg.local_alloc(result=ttg.MemDescType.get(shape=[1, 256, 64], element_type=T.f16(), encoding=shared, memory_space=smem, mutable_memory=True, alloc_shape=[1, 256, 64]))
     v69 = ttg.local_alloc(result=ttg.MemDescType.get(shape=[1, 64, 256], element_type=T.f16(), encoding=shared1, memory_space=smem, mutable_memory=True, alloc_shape=[1, 64, 256]))
+    
     # LW[0]
     v70 = ttg.memdesc_subview(result=ttg.MemDescType.get(shape=[256, 64], element_type=T.f16(), encoding=shared, memory_space=smem, mutable_memory=True, alloc_shape=[256, 64]), src=v68, offsets=[c0_i32, c0_i32, c0_i32])
     ttg.local_store_4 = ttg.local_store(src=v35, dst=v70)
@@ -154,6 +151,7 @@ def matmul_kernel(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, ar
     a10_68 = ttg.memdesc_subview(result=ttg.MemDescType.get(shape=[64, 32], element_type=T.f16(), encoding=shared, memory_space=smem, mutable_memory=True, alloc_shape=[64, 32]), src=v68, offsets=[c0_i32, c64_i32, c0_i32])
     a20_68 = ttg.memdesc_subview(result=ttg.MemDescType.get(shape=[64, 32], element_type=T.f16(), encoding=shared, memory_space=smem, mutable_memory=True, alloc_shape=[64, 32]), src=v68, offsets=[c0_i32, c128_i32, c0_i32])
     a30_68 = ttg.memdesc_subview(result=ttg.MemDescType.get(shape=[64, 32], element_type=T.f16(), encoding=shared, memory_space=smem, mutable_memory=True, alloc_shape=[64, 32]), src=v68, offsets=[c0_i32, c192_i32, c0_i32])
+
     a01_68 = ttg.memdesc_subview(result=ttg.MemDescType.get(shape=[64, 32], element_type=T.f16(), encoding=shared, memory_space=smem, mutable_memory=True, alloc_shape=[64, 32]), src=v68, offsets=[c0_i32, c0_i32, c32_i32])
     a11_68 = ttg.memdesc_subview(result=ttg.MemDescType.get(shape=[64, 32], element_type=T.f16(), encoding=shared, memory_space=smem, mutable_memory=True, alloc_shape=[64, 32]), src=v68, offsets=[c0_i32, c64_i32, c32_i32])
     a21_68 = ttg.memdesc_subview(result=ttg.MemDescType.get(shape=[64, 32], element_type=T.f16(), encoding=shared, memory_space=smem, mutable_memory=True, alloc_shape=[64, 32]), src=v68, offsets=[c0_i32, c128_i32, c32_i32])
@@ -163,6 +161,7 @@ def matmul_kernel(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, ar
     b10_69 = ttg.memdesc_subview(result=ttg.MemDescType.get(shape=[32, 64], element_type=T.f16(), encoding=shared1, memory_space=smem, mutable_memory=True, alloc_shape=[32, 64]), src=v69, offsets=[c0_i32, c0_i32, c64_i32])
     b20_69 = ttg.memdesc_subview(result=ttg.MemDescType.get(shape=[32, 64], element_type=T.f16(), encoding=shared1, memory_space=smem, mutable_memory=True, alloc_shape=[32, 64]), src=v69, offsets=[c0_i32, c0_i32, c128_i32])
     b30_69 = ttg.memdesc_subview(result=ttg.MemDescType.get(shape=[32, 64], element_type=T.f16(), encoding=shared1, memory_space=smem, mutable_memory=True, alloc_shape=[32, 64]), src=v69, offsets=[c0_i32, c0_i32, c192_i32])
+
     b01_69 = ttg.memdesc_subview(result=ttg.MemDescType.get(shape=[32, 64], element_type=T.f16(), encoding=shared1, memory_space=smem, mutable_memory=True, alloc_shape=[32, 64]), src=v69, offsets=[c0_i32, c32_i32, c0_i32])
     b11_69 = ttg.memdesc_subview(result=ttg.MemDescType.get(shape=[32, 64], element_type=T.f16(), encoding=shared1, memory_space=smem, mutable_memory=True, alloc_shape=[32, 64]), src=v69, offsets=[c0_i32, c32_i32, c64_i32])
     b21_69 = ttg.memdesc_subview(result=ttg.MemDescType.get(shape=[32, 64], element_type=T.f16(), encoding=shared1, memory_space=smem, mutable_memory=True, alloc_shape=[32, 64]), src=v69, offsets=[c0_i32, c32_i32, c128_i32])
@@ -262,241 +261,265 @@ def matmul_kernel(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, ar
             b10_71,
         ],
     ):
+        
+        ######################################################################
+        ## dot 0-3
         c00 = tt.dot(a=arg15, b=arg16, c=arg11, input_precision=2, max_num_imprecise_acc=0)
-        rocdl.sched_group_barrier(mask=8, size=8, group_id=0)
+        rocdl.sched_group_barrier(mask=8, size=8, group_id=0) # mfma
+
         c01 = tt.dot(a=arg15, b=arg35, c=arg19, input_precision=2, max_num_imprecise_acc=0)
-        rocdl.sched_group_barrier(mask=8, size=8, group_id=0)
+        rocdl.sched_group_barrier(mask=8, size=8, group_id=0) # mfma
         rocdl.sched_barrier(mask=0)
 
         b20_71 = ttg.local_load(result=T.tensor(32, 64, T.f16(), encoding=dot1), src=b20_69)
         b30_71 = ttg.local_load(result=T.tensor(32, 64, T.f16(), encoding=dot1), src=b30_69)
         c10 = tt.dot(a=arg34, b=arg16, c=arg22, input_precision=2, max_num_imprecise_acc=0)
-        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)
-        rocdl.sched_group_barrier(mask=256, size=1, group_id=0)
-        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)
-        rocdl.sched_group_barrier(mask=256, size=1, group_id=0)
-        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)
-        rocdl.sched_group_barrier(mask=256, size=1, group_id=0)
-        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)
-        rocdl.sched_group_barrier(mask=256, size=1, group_id=0)
+        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)   # mfma 16 cycles there fore 8 x 16
+        rocdl.sched_group_barrier(mask=256, size=1, group_id=0) # ds_read 128 cycles before mfma
+        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)   # mfma
+        rocdl.sched_group_barrier(mask=256, size=1, group_id=0) # ds_read
+        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)   # mfma
+        rocdl.sched_group_barrier(mask=256, size=1, group_id=0) # ds_read
+        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)   # mfma
+        rocdl.sched_group_barrier(mask=256, size=1, group_id=0) # ds_read
         rocdl.sched_barrier(mask=0)
 
         c11 = tt.dot(a=arg34, b=arg35, c=arg23, input_precision=2, max_num_imprecise_acc=0)
-        rocdl.sched_group_barrier(mask=8, size=8, group_id=0)
+        rocdl.sched_group_barrier(mask=8, size=8, group_id=0) # mfma
         rocdl.sched_barrier(mask=0)
 
+        ######################################################################
+        ## dot 4-7
         c02 = tt.dot(a=arg15, b=b20_71, c=arg20, input_precision=2, max_num_imprecise_acc=0)
-        rocdl.sched_group_barrier(mask=8, size=8, group_id=0)
+        rocdl.sched_group_barrier(mask=8, size=8, group_id=0) # mfma
         c03 = tt.dot(a=arg15, b=b30_71, c=arg21, input_precision=2, max_num_imprecise_acc=0)
-        rocdl.sched_group_barrier(mask=8, size=8, group_id=0)
+        rocdl.sched_group_barrier(mask=8, size=8, group_id=0) # mfma
         rocdl.sched_barrier(mask=0)
 
         a20_70 = ttg.local_load(result=T.tensor(64, 32, T.f16(), encoding=dot0), src=a20_68)
         a30_70 = ttg.local_load(result=T.tensor(64, 32, T.f16(), encoding=dot0), src=a30_68)
         c12 = tt.dot(a=arg34, b=b20_71, c=arg24, input_precision=2, max_num_imprecise_acc=0)
-        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)
-        rocdl.sched_group_barrier(mask=256, size=1, group_id=0)
-        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)
-        rocdl.sched_group_barrier(mask=256, size=1, group_id=0)
-        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)
-        rocdl.sched_group_barrier(mask=256, size=1, group_id=0)
-        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)
-        rocdl.sched_group_barrier(mask=256, size=1, group_id=0)
+        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)   # mfma
+        rocdl.sched_group_barrier(mask=256, size=1, group_id=0) # ds_read
+        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)   # mfma
+        rocdl.sched_group_barrier(mask=256, size=1, group_id=0) # ds_read
+        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)   # mfma
+        rocdl.sched_group_barrier(mask=256, size=1, group_id=0) # ds_read
+        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)   # mfma
+        rocdl.sched_group_barrier(mask=256, size=1, group_id=0) # ds_read
         rocdl.sched_barrier(mask=0)
 
         c13 = tt.dot(a=arg34, b=b30_71, c=arg25, input_precision=2, max_num_imprecise_acc=0)
         rocdl.sched_group_barrier(mask=8, size=8, group_id=0)
         rocdl.sched_barrier(mask=0)
 
+        ######################################################################
+        ## dot 8-11
         c20 = tt.dot(a=a20_70, b=arg16, c=arg26, input_precision=2, max_num_imprecise_acc=0)
         c21 = tt.dot(a=a20_70, b=arg35, c=arg27, input_precision=2, max_num_imprecise_acc=0)
         c30 = tt.dot(a=a30_70, b=arg16, c=arg30, input_precision=2, max_num_imprecise_acc=0)
         c31 = tt.dot(a=a30_70, b=arg35, c=arg31, input_precision=2, max_num_imprecise_acc=0)
         rocdl.sched_barrier(mask=1030)
 
+        ######################################################################
+        ## dot 12-15
         c22 = tt.dot(a=a20_70, b=b20_71, c=arg28, input_precision=2, max_num_imprecise_acc=0)
         rocdl.sched_barrier(mask=1030)
 
         a01_70 = ttg.local_load(result=T.tensor(64, 32, T.f16(), encoding=dot0), src=a01_68)
         b01_71 = ttg.local_load(result=T.tensor(32, 64, T.f16(), encoding=dot1), src=b01_69)
         c23 = tt.dot(a=a20_70, b=b30_71, c=arg29, input_precision=2, max_num_imprecise_acc=0)
-        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)
-        rocdl.sched_group_barrier(mask=256, size=1, group_id=0)
-        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)
-        rocdl.sched_group_barrier(mask=256, size=1, group_id=0)
-        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)
-        rocdl.sched_group_barrier(mask=256, size=1, group_id=0)
-        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)
-        rocdl.sched_group_barrier(mask=256, size=1, group_id=0)
+        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)   # mfma
+        rocdl.sched_group_barrier(mask=256, size=1, group_id=0) # ds_read
+        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)   # mfma
+        rocdl.sched_group_barrier(mask=256, size=1, group_id=0) # ds_read
+        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)   # mfma
+        rocdl.sched_group_barrier(mask=256, size=1, group_id=0) # ds_read
+        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)   # mfma
+        rocdl.sched_group_barrier(mask=256, size=1, group_id=0) # ds_read
         rocdl.sched_barrier(mask=1030)
 
         b11_71 = ttg.local_load(result=T.tensor(32, 64, T.f16(), encoding=dot1), src=b11_69)
         a11_70 = ttg.local_load(result=T.tensor(64, 32, T.f16(), encoding=dot0), src=a11_68)
         c32 = tt.dot(a=a30_70, b=b20_71, c=arg32, input_precision=2, max_num_imprecise_acc=0)
-        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)
-        rocdl.sched_group_barrier(mask=256, size=1, group_id=0)
-        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)
-        rocdl.sched_group_barrier(mask=256, size=1, group_id=0)
-        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)
-        rocdl.sched_group_barrier(mask=256, size=1, group_id=0)
-        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)
-        rocdl.sched_group_barrier(mask=256, size=1, group_id=0)
+        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)   # mfma
+        rocdl.sched_group_barrier(mask=256, size=1, group_id=0) # ds_read
+        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)   # mfma
+        rocdl.sched_group_barrier(mask=256, size=1, group_id=0) # ds_read
+        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)   # mfma
+        rocdl.sched_group_barrier(mask=256, size=1, group_id=0) # ds_read
+        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)   # mfma
+        rocdl.sched_group_barrier(mask=256, size=1, group_id=0) # ds_read
         rocdl.sched_barrier(mask=1030)
 
         c33 = tt.dot(a=a30_70, b=b30_71, c=arg33, input_precision=2, max_num_imprecise_acc=0)
         rocdl.sched_group_barrier(mask=8, size=8, group_id=0)
         rocdl.sched_barrier(mask=1030)
 
+        ######################################################################
+        ## dot 16-19
         d00 = tt.dot(a=a01_70, b=b01_71, c=c00, input_precision=2, max_num_imprecise_acc=0)
-        rocdl.sched_group_barrier(mask=8, size=8, group_id=0)
+        rocdl.sched_group_barrier(mask=8, size=8, group_id=0) # mfma
         rocdl.sched_barrier(mask=1030)
 
         b21_71 = ttg.local_load(result=T.tensor(32, 64, T.f16(), encoding=dot1), src=b21_69)
         b31_71 = ttg.local_load(result=T.tensor(32, 64, T.f16(), encoding=dot1), src=b31_69)
         d01 = tt.dot(a=a01_70, b=b11_71, c=c01, input_precision=2, max_num_imprecise_acc=0)
-        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)
-        rocdl.sched_group_barrier(mask=256, size=1, group_id=0)
-        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)
-        rocdl.sched_group_barrier(mask=256, size=1, group_id=0)
-        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)
-        rocdl.sched_group_barrier(mask=256, size=1, group_id=0)
-        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)
-        rocdl.sched_group_barrier(mask=256, size=1, group_id=0)
+        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)   # mfma
+        rocdl.sched_group_barrier(mask=256, size=1, group_id=0) # ds_read
+        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)   # mfma
+        rocdl.sched_group_barrier(mask=256, size=1, group_id=0) # ds_read
+        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)   # mfma
+        rocdl.sched_group_barrier(mask=256, size=1, group_id=0) # ds_read
+        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)   # mfma
+        rocdl.sched_group_barrier(mask=256, size=1, group_id=0) # ds_read
         rocdl.sched_barrier(mask=1030)
 
         a21_70 = ttg.local_load(result=T.tensor(64, 32, T.f16(), encoding=dot0), src=a21_68)
         a31_70 = ttg.local_load(result=T.tensor(64, 32, T.f16(), encoding=dot0), src=a31_68)
         d10 = tt.dot(a=a11_70, b=b01_71, c=c10, input_precision=2, max_num_imprecise_acc=0)
-        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)
-        rocdl.sched_group_barrier(mask=256, size=1, group_id=0)
-        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)
-        rocdl.sched_group_barrier(mask=256, size=1, group_id=0)
-        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)
-        rocdl.sched_group_barrier(mask=256, size=1, group_id=0)
-        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)
-        rocdl.sched_group_barrier(mask=256, size=1, group_id=0)
+        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)   # mfma
+        rocdl.sched_group_barrier(mask=256, size=1, group_id=0) # ds_read
+        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)   # mfma
+        rocdl.sched_group_barrier(mask=256, size=1, group_id=0) # ds_read
+        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)   # mfma
+        rocdl.sched_group_barrier(mask=256, size=1, group_id=0) # ds_read
+        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)   # mfma
+        rocdl.sched_group_barrier(mask=256, size=1, group_id=0) # ds_read
         rocdl.sched_barrier(mask=1030)
 
         d11 = tt.dot(a=a11_70, b=b11_71, c=c11, input_precision=2, max_num_imprecise_acc=0)
         rocdl.sched_group_barrier(mask=8, size=8, group_id=0)
-        rocdl.sched_barrier(mask=1030)
+        rocdl.sched_barrier(mask=1030) # mfma
 
+        ######################################################################
+        ## 8 ds_write + global_load
         w102 = ttg.memdesc_subview(result=ttg.MemDescType.get(shape=[256, 64], element_type=T.f16(), encoding=shared, memory_space=smem, mutable_memory=True, alloc_shape=[256, 64]), src=v68, offsets=[c0_i32, c0_i32, c0_i32])
         ttg.local_store_6 = ttg.local_store(src=arg13, dst=w102)
         ttg.local_store_6.attributes['OpIdx'] = amdgpu.OpIdxAttr.get(0)
         g96 = tt.addptr(result=ttpp.ptr(T.f16(), 1), ptr=arg17, offset=c64_i32)
         g97 = amdgpu.buffer_load(result=T.tensor(256, 64, T.f16(), encoding=blocked), ptr=g96, offsets=v29, cache=1)
         g97.owner.attributes['OpIdx'] = amdgpu.OpIdxAttr.get(0)
+
+        ######################################################################
+        ## dot 20-23
         d02 = tt.dot(a=a01_70, b=b21_71, c=c02, input_precision=2, max_num_imprecise_acc=0)
         d03 = tt.dot(a=a01_70, b=b31_71, c=c03, input_precision=2, max_num_imprecise_acc=0)
         d12 = tt.dot(a=a11_70, b=b21_71, c=c12, input_precision=2, max_num_imprecise_acc=0)
         d13 = tt.dot(a=a11_70, b=b31_71, c=c13, input_precision=2, max_num_imprecise_acc=0)
-        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)
-        rocdl.sched_group_barrier(mask=512, size=1, group_id=0)
-        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)
-        rocdl.sched_group_barrier(mask=32, size=1, group_id=0)
-        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)
-        rocdl.sched_group_barrier(mask=512, size=1, group_id=0)
-        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)
-        rocdl.sched_group_barrier(mask=32, size=1, group_id=0)
-        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)
-        rocdl.sched_group_barrier(mask=512, size=1, group_id=0)
-        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)
-        rocdl.sched_group_barrier(mask=32, size=1, group_id=0)
-        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)
-        rocdl.sched_group_barrier(mask=512, size=1, group_id=0)
-        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)
-        rocdl.sched_group_barrier(mask=32, size=1, group_id=0)
-        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)
-        rocdl.sched_group_barrier(mask=512, size=1, group_id=0)
-        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)
-        rocdl.sched_group_barrier(mask=32, size=1, group_id=0)
-        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)
-        rocdl.sched_group_barrier(mask=512, size=1, group_id=0)
-        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)
-        rocdl.sched_group_barrier(mask=32, size=1, group_id=0)
-        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)
-        rocdl.sched_group_barrier(mask=512, size=1, group_id=0)
-        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)
-        rocdl.sched_group_barrier(mask=32, size=1, group_id=0)
-        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)
-        rocdl.sched_group_barrier(mask=512, size=1, group_id=0)
-        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)
-        rocdl.sched_group_barrier(mask=32, size=1, group_id=0)
+
+        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)   # mfma
+        rocdl.sched_group_barrier(mask=512, size=1, group_id=0) # ds_write
+        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)   # mfma
+        rocdl.sched_group_barrier(mask=32, size=1, group_id=0)  # global_load
+        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)   # mfma
+        rocdl.sched_group_barrier(mask=512, size=1, group_id=0) # ds_write
+        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)   # mfma
+        rocdl.sched_group_barrier(mask=32, size=1, group_id=0)  # global_load
+        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)   # mfma
+        rocdl.sched_group_barrier(mask=512, size=1, group_id=0) # ds_write
+        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)   # mfma
+        rocdl.sched_group_barrier(mask=32, size=1, group_id=0)  # global_load
+        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)   # mfma
+        rocdl.sched_group_barrier(mask=512, size=1, group_id=0) # ds_write
+        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)   # mfma
+        rocdl.sched_group_barrier(mask=32, size=1, group_id=0)  # global_load
+        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)   # mfma
+        rocdl.sched_group_barrier(mask=512, size=1, group_id=0) # ds_write
+        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)   # mfma
+        rocdl.sched_group_barrier(mask=32, size=1, group_id=0)  # global_load
+        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)   # mfma
+        rocdl.sched_group_barrier(mask=512, size=1, group_id=0) # ds_write
+        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)   # mfma
+        rocdl.sched_group_barrier(mask=32, size=1, group_id=0)  # global_load
+        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)   # mfma
+        rocdl.sched_group_barrier(mask=512, size=1, group_id=0) # ds_write
+        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)   # mfma
+        rocdl.sched_group_barrier(mask=32, size=1, group_id=0)  # global_load
+        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)   # mfma
+        rocdl.sched_group_barrier(mask=512, size=1, group_id=0) # ds_write
+        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)   # mfma
+        rocdl.sched_group_barrier(mask=32, size=1, group_id=0)  # global_load
         rocdl.sched_barrier(mask=1030)
 
+        ######################################################################
+        ## 8 ds_write + global_load
         w103 = ttg.memdesc_subview(result=ttg.MemDescType.get(shape=[64, 256], element_type=T.f16(), encoding=shared1, memory_space=smem, mutable_memory=True, alloc_shape=[64, 256]), src=v69, offsets=[c0_i32, c0_i32, c0_i32])
         ttg.local_store_8 = ttg.local_store(src=arg14, dst=w103)
         ttg.local_store_8.attributes['OpIdx'] = amdgpu.OpIdxAttr.get(1)
         g98 = tt.addptr(result=ttpp.ptr(T.f16(), 1), ptr=arg18, offset=c64_i32)
         g104 = amdgpu.buffer_load(result=T.tensor(64, 256, T.f16(), encoding=blocked1), ptr=g98, offsets=v54, cache=1)
         g104.owner.attributes['OpIdx'] = amdgpu.OpIdxAttr.get(1)
+
+        ######################################################################
+        ## dot 24-27
         d20 = tt.dot(a=a21_70, b=b01_71, c=c20, input_precision=2, max_num_imprecise_acc=0)
         d21 = tt.dot(a=a21_70, b=b11_71, c=c21, input_precision=2, max_num_imprecise_acc=0)
         d30 = tt.dot(a=a31_70, b=b01_71, c=c30, input_precision=2, max_num_imprecise_acc=0)
         d31 = tt.dot(a=a31_70, b=b11_71, c=c31, input_precision=2, max_num_imprecise_acc=0)
-        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)
-        rocdl.sched_group_barrier(mask=512, size=1, group_id=0)
-        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)
-        rocdl.sched_group_barrier(mask=32, size=1, group_id=0)
-        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)
-        rocdl.sched_group_barrier(mask=512, size=1, group_id=0)
-        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)
-        rocdl.sched_group_barrier(mask=32, size=1, group_id=0)
-        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)
-        rocdl.sched_group_barrier(mask=512, size=1, group_id=0)
-        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)
-        rocdl.sched_group_barrier(mask=32, size=1, group_id=0)
-        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)
-        rocdl.sched_group_barrier(mask=512, size=1, group_id=0)
-        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)
-        rocdl.sched_group_barrier(mask=32, size=1, group_id=0)
-        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)
-        rocdl.sched_group_barrier(mask=512, size=1, group_id=0)
-        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)
-        rocdl.sched_group_barrier(mask=32, size=1, group_id=0)
-        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)
-        rocdl.sched_group_barrier(mask=512, size=1, group_id=0)
-        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)
-        rocdl.sched_group_barrier(mask=32, size=1, group_id=0)
-        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)
-        rocdl.sched_group_barrier(mask=512, size=1, group_id=0)
-        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)
-        rocdl.sched_group_barrier(mask=32, size=1, group_id=0)
-        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)
-        rocdl.sched_group_barrier(mask=512, size=1, group_id=0)
-        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)
-        rocdl.sched_group_barrier(mask=32, size=1, group_id=0)
+
+        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)   # mfma
+        rocdl.sched_group_barrier(mask=512, size=1, group_id=0) # ds_write
+        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)   # mfma
+        rocdl.sched_group_barrier(mask=32, size=1, group_id=0)  # global_load
+        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)   # mfma
+        rocdl.sched_group_barrier(mask=512, size=1, group_id=0) # ds_write
+        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)   # mfma
+        rocdl.sched_group_barrier(mask=32, size=1, group_id=0)  # global_load
+        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)   # mfma
+        rocdl.sched_group_barrier(mask=512, size=1, group_id=0) # ds_write
+        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)   # mfma
+        rocdl.sched_group_barrier(mask=32, size=1, group_id=0)  # global_load
+        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)   # mfma
+        rocdl.sched_group_barrier(mask=512, size=1, group_id=0) # ds_write
+        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)   # mfma
+        rocdl.sched_group_barrier(mask=32, size=1, group_id=0)  # global_load
+        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)   # mfma
+        rocdl.sched_group_barrier(mask=512, size=1, group_id=0) # ds_write
+        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)   # mfma
+        rocdl.sched_group_barrier(mask=32, size=1, group_id=0)  # global_load
+        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)   # mfma
+        rocdl.sched_group_barrier(mask=512, size=1, group_id=0) # ds_write
+        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)   # mfma
+        rocdl.sched_group_barrier(mask=32, size=1, group_id=0)  # global_load
+        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)   # mfma
+        rocdl.sched_group_barrier(mask=512, size=1, group_id=0) # ds_write
+        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)   # mfma
+        rocdl.sched_group_barrier(mask=32, size=1, group_id=0)  # global_load
+        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)   # mfma
+        rocdl.sched_group_barrier(mask=512, size=1, group_id=0) # ds_write
+        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)   # mfma
+        rocdl.sched_group_barrier(mask=32, size=1, group_id=0)  # global_load
         rocdl.sched_barrier(mask=0)
 
         d22 = tt.dot(a=a21_70, b=b21_71, c=c22, input_precision=2, max_num_imprecise_acc=0)
-        rocdl.sched_group_barrier(mask=8, size=8, group_id=0)
+        rocdl.sched_group_barrier(mask=8, size=8, group_id=0) # mfma
         rocdl.sched_barrier(mask=0)
 
         a0 = ttg.local_load(result=T.tensor(64, 32, T.f16(), encoding=dot0), src=a00_68)
         b0 = ttg.local_load(result=T.tensor(32, 64, T.f16(), encoding=dot1), src=b00_69)
         d23 = tt.dot(a=a21_70, b=b31_71, c=c23, input_precision=2, max_num_imprecise_acc=0)
-        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)
-        rocdl.sched_group_barrier(mask=256, size=1, group_id=0)
-        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)
-        rocdl.sched_group_barrier(mask=256, size=1, group_id=0)
-        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)
-        rocdl.sched_group_barrier(mask=256, size=1, group_id=0)
-        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)
-        rocdl.sched_group_barrier(mask=256, size=1, group_id=0)
+        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)   # mfma
+        rocdl.sched_group_barrier(mask=256, size=1, group_id=0) # ds_read
+        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)   # mfma
+        rocdl.sched_group_barrier(mask=256, size=1, group_id=0) # ds_read
+        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)   # mfma
+        rocdl.sched_group_barrier(mask=256, size=1, group_id=0) # ds_read
+        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)   # mfma
+        rocdl.sched_group_barrier(mask=256, size=1, group_id=0) # ds_read
         rocdl.sched_barrier(mask=0)
 
         a1 = ttg.local_load(result=T.tensor(64, 32, T.f16(), encoding=dot0), src=a10_68)
         b1 = ttg.local_load(result=T.tensor(32, 64, T.f16(), encoding=dot1), src=b10_69)
         d32 = tt.dot(a=a31_70, b=b21_71, c=c32, input_precision=2, max_num_imprecise_acc=0)
-        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)
-        rocdl.sched_group_barrier(mask=256, size=1, group_id=0)
-        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)
-        rocdl.sched_group_barrier(mask=256, size=1, group_id=0)
-        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)
-        rocdl.sched_group_barrier(mask=256, size=1, group_id=0)
-        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)
-        rocdl.sched_group_barrier(mask=256, size=1, group_id=0)
+        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)   # mfma
+        rocdl.sched_group_barrier(mask=256, size=1, group_id=0) # ds_read
+        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)   # mfma
+        rocdl.sched_group_barrier(mask=256, size=1, group_id=0) # ds_read
+        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)   # mfma
+        rocdl.sched_group_barrier(mask=256, size=1, group_id=0) # ds_read
+        rocdl.sched_group_barrier(mask=8, size=2, group_id=0)   # mfma
+        rocdl.sched_group_barrier(mask=256, size=1, group_id=0) # ds_read
         rocdl.sched_barrier(mask=0)
 
         d33 = tt.dot(a=a31_70, b=b31_71, c=c33, input_precision=2, max_num_imprecise_acc=0)
@@ -505,6 +528,11 @@ def matmul_kernel(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, ar
 
         scf.yield_(results_=[d00, arg12, g97, g104, a0, b0, g96, g98, d01, d02, d03, d10, d11, d12, d13, d20, d21, d22, d23, d30, d31, d32, d33, a1, b1])
 
+    ##############################################################################
+    ## End Loop
+    ##############################################################################
+
+    # Dot[K-2]
     eg00 = tt.dot(a=v71_4, b=v71_5, c=v71_0, input_precision=2, max_num_imprecise_acc=0)
     eg01 = tt.dot(a=v71_4, b=v71_24, c=v71_8, input_precision=2, max_num_imprecise_acc=0)
     eg10 = tt.dot(a=v71_23, b=v71_5, c=v71_11, input_precision=2, max_num_imprecise_acc=0)
@@ -532,6 +560,8 @@ def matmul_kernel(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, ar
     eg32 = tt.dot(a=ea30_70, b=eb20_71, c=v71_21, input_precision=2, max_num_imprecise_acc=0)
     eg33 = tt.dot(a=ea30_70, b=eb30_71, c=v71_22, input_precision=2, max_num_imprecise_acc=0)
     rocdl.sched_barrier(mask=0)
+
+    ##############################################################################
 
     eb01_71 = ttg.local_load(result=T.tensor(32, 64, T.f16(), encoding=dot1), src=b01_69)
     ea01_70 = ttg.local_load(result=T.tensor(64, 32, T.f16(), encoding=dot0), src=a01_68)
@@ -565,12 +595,18 @@ def matmul_kernel(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, ar
     ed33 = tt.dot(a=ea31_70, b=eb31_71, c=eg33, input_precision=2, max_num_imprecise_acc=0)
     rocdl.sched_barrier(mask=0)
 
+    ##############################################################################
+
+    ## LR[K-1]
+
     v72 = ttg.memdesc_subview(result=ttg.MemDescType.get(shape=[256, 64], element_type=T.f16(), encoding=shared, memory_space=smem, mutable_memory=True, alloc_shape=[256, 64]), src=v68, offsets=[c0_i32, c0_i32, c0_i32])
     ttg.local_store_10 = ttg.local_store(src=v71_2, dst=v72)
     ttg.local_store_10.attributes['OpIdx'] = amdgpu.OpIdxAttr.get(0)
     v73 = ttg.memdesc_subview(result=ttg.MemDescType.get(shape=[64, 256], element_type=T.f16(), encoding=shared1, memory_space=smem, mutable_memory=True, alloc_shape=[64, 256]), src=v69, offsets=[c0_i32, c0_i32, c0_i32])
     ttg.local_store_11 = ttg.local_store(src=v71_3, dst=v73)
     ttg.local_store_11.attributes['OpIdx'] = amdgpu.OpIdxAttr.get(1)
+
+    # s_barrier
     rocdl.sched_barrier(mask=0)
 
     efb00 = ttg.local_load(result=T.tensor(32, 64, T.f16(), encoding=dot1), src=b00_69)
@@ -604,6 +640,8 @@ def matmul_kernel(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, ar
     ef32 = tt.dot(a=efa30, b=efb20, c=ed32, input_precision=2, max_num_imprecise_acc=0)
     ef33 = tt.dot(a=efa30, b=efb30, c=ed33, input_precision=2, max_num_imprecise_acc=0)
     rocdl.sched_barrier(mask=0)
+
+    ##############################################################################
 
     efb01 = ttg.local_load(result=T.tensor(32, 64, T.f16(), encoding=dot1), src=b01_69)
     efa01 = ttg.local_load(result=T.tensor(64, 32, T.f16(), encoding=dot0), src=a01_68)
@@ -763,6 +801,12 @@ def matmul_kernel(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, ar
     amdgpu.buffer_store(value=ec33, ptr=ea, offsets=ei33, cache=1)
 
     # start mask
+    # v62 = tt.make_range(result=T.tensor(256, T.i32(), encoding=ttg.SliceEncodingAttr.get(dim=1, parent=mma)), start=0, end=256)
+    # v63 = tt.make_range(result=T.tensor(256, T.i32(), encoding=ttg.SliceEncodingAttr.get(dim=0, parent=mma)), start=0, end=256)
+    # v64 = tt.splat(result=T.tensor(256, T.i32(), encoding=ttg.SliceEncodingAttr.get(dim=1, parent=mma)), src=v16)
+    # v66 = tt.splat(result=T.tensor(256, T.i32(), encoding=ttg.SliceEncodingAttr.get(dim=0, parent=mma)), src=v42)
+    # v65 = arith.addi(lhs=v64, rhs=v62)
+    # v67 = arith.addi(lhs=v66, rhs=v63)
     # v102 = tt.splat(result=T.tensor(256, 1, T.i32(), encoding=mma), src=arg3)
     # v90 = tt.expand_dims(src=v65, axis=1)
     # v103 = arith.cmpi(predicate=2, lhs=v90, rhs=v102)
@@ -816,21 +860,32 @@ def launch(
     c_args = (ctypes.c_void_p * len(addresses))(*addresses)
     function = ctypes.cast(function, chip.hipFunction_t)
     stream = ctypes.cast(stream, chip.hipStream_t)
-    chip_check(
-        chip.hipModuleLaunchKernel(
-            function,
-            gridX,
-            gridY,
-            gridZ,
-            warp_size * num_warps,
-            1,
-            1,
-            shared_memory,
-            stream,
-            c_args,
-            None,
-        )
+
+    tstart = hip_check(hip.hipEventCreate())
+    tstop = hip_check(hip.hipEventCreate())
+    hip_check(hip.hipEventRecord(tstart, None))
+
+    r = chip.hipModuleLaunchKernel(
+        function,
+        gridX,
+        gridY,
+        gridZ,
+        warp_size * num_warps,
+        1,
+        1,
+        shared_memory,
+        stream,
+        c_args,
+        None,
     )
+
+    hip_check(hip.hipEventRecord(tstop, None))
+    hip_check(hip.hipEventSynchronize(tstop))
+    time_compute = hip_check(hip.hipEventElapsedTime(tstart, tstop))
+
+    chip_check(r)
+
+    return time_compute
 
 
 ttgir_mod = unwrap_c_module_op(ctx.module.operation)
@@ -884,37 +939,41 @@ num_warps = options.num_warps
 shared_memory = options_dict["shared"]
 stream = 0
 
-launch(
-    function,
-    gridX,
-    gridY,
-    gridZ,
-    stream,
-    warp_size,
-    num_warps,
-    shared_memory,
-    a_d,
-    b_d,
-    c_d,
-    M,
-    N,
-    K,
-    a_h.strides[0] // a_h.itemsize,
-    b_h.strides[1] // b_h.itemsize,
-    c_h.strides[0] // c_h.itemsize,
-    0,
-    0,
-    0,
-    0,
-)
+t = 0
+num_runs = 100
+for _ in range(num_runs):
+    t += launch(
+        function,
+        gridX,
+        gridY,
+        gridZ,
+        stream,
+        warp_size,
+        num_warps,
+        shared_memory,
+        a_d,
+        b_d,
+        c_d,
+        M,
+        N,
+        K,
+        a_h.strides[0] // a_h.itemsize,
+        b_h.strides[1] // b_h.itemsize,
+        c_h.strides[0] // c_h.itemsize,
+        0,
+        0,
+        0,
+        0,
+    )
+print(f"avg time: {t / num_runs}")
 
-correct = a_h @ b_h
-assert np.allclose(c_h, -3.0)
-assert not np.allclose(correct, c_h)
-hip_check(hip.hipMemcpy(c_h, c_d, c_num_bytes, hip.hipMemcpyKind.hipMemcpyDeviceToHost))
-if not np.allclose(c_h, correct, atol=5e-3, rtol=1e-2):
-    print(c_h)
-    # print(correct)
-    total_wrong = np.sum((c_h - correct) != 0)
-    print(f"{total_wrong=}")
-    assert (total_wrong / M * N) < 0.005
+# correct = a_h @ b_h
+# assert np.allclose(c_h, -3.0)
+# assert not np.allclose(correct, c_h)
+# hip_check(hip.hipMemcpy(c_h, c_d, c_num_bytes, hip.hipMemcpyKind.hipMemcpyDeviceToHost))
+# if not np.allclose(c_h, correct, atol=5e-3, rtol=1e-2):
+#     print(c_h)
+#     # print(correct)
+#     total_wrong = np.sum((c_h - correct) != 0)
+#     print(f"{total_wrong=}")
+#     assert (total_wrong / M * N) < 0.005

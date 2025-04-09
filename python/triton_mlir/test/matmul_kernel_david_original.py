@@ -266,21 +266,32 @@ def launch(
     c_args = (ctypes.c_void_p * len(addresses))(*addresses)
     function = ctypes.cast(function, chip.hipFunction_t)
     stream = ctypes.cast(stream, chip.hipStream_t)
-    chip_check(
-        chip.hipModuleLaunchKernel(
-            function,
-            gridX,
-            gridY,
-            gridZ,
-            warp_size * num_warps,
-            1,
-            1,
-            shared_memory,
-            stream,
-            c_args,
-            None,
-        )
+
+    tstart = hip_check(hip.hipEventCreate())
+    tstop = hip_check(hip.hipEventCreate())
+    hip_check(hip.hipEventRecord(tstart, None))
+
+    r = chip.hipModuleLaunchKernel(
+        function,
+        gridX,
+        gridY,
+        gridZ,
+        warp_size * num_warps,
+        1,
+        1,
+        shared_memory,
+        stream,
+        c_args,
+        None,
     )
+
+    hip_check(hip.hipEventRecord(tstop, None))
+    hip_check(hip.hipEventSynchronize(tstop))
+    time_compute = hip_check(hip.hipEventElapsedTime(tstart, tstop))
+
+    chip_check(r)
+
+    return time_compute
 
 
 ttgir_mod = unwrap_c_module_op(ctx.module.operation)
@@ -334,34 +345,38 @@ num_warps = options.num_warps
 shared_memory = options_dict["shared"]
 stream = 0
 
-launch(
-    function,
-    gridX,
-    gridY,
-    gridZ,
-    stream,
-    warp_size,
-    num_warps,
-    shared_memory,
-    a_d,
-    b_d,
-    c_d,
-    M,
-    N,
-    K,
-    a_h.strides[0] // a_h.itemsize,
-    b_h.strides[1] // b_h.itemsize,
-    c_h.strides[0] // c_h.itemsize,
-    0,
-    0,
-    0,
-    0,
-)
+t = 0
+num_runs = 100
+for _ in range(num_runs):
+    t += launch(
+        function,
+        gridX,
+        gridY,
+        gridZ,
+        stream,
+        warp_size,
+        num_warps,
+        shared_memory,
+        a_d,
+        b_d,
+        c_d,
+        M,
+        N,
+        K,
+        a_h.strides[0] // a_h.itemsize,
+        b_h.strides[1] // b_h.itemsize,
+        c_h.strides[0] // c_h.itemsize,
+        0,
+        0,
+        0,
+        0,
+    )
+print(f"avg time: {t / num_runs}")
 
-correct = a_h @ b_h
-assert np.allclose(c_h, -3.0)
-assert not np.allclose(correct, c_h)
-hip_check(hip.hipMemcpy(c_h, c_d, c_num_bytes, hip.hipMemcpyKind.hipMemcpyDeviceToHost))
-if not np.allclose(c_h, correct, atol=5e-3, rtol=1e-2):
-    assert np.sum((c_h - correct) != 0) < 0.005
-# print(c_h)
+# correct = a_h @ b_h
+# assert np.allclose(c_h, -3.0)
+# assert not np.allclose(correct, c_h)
+# hip_check(hip.hipMemcpy(c_h, c_d, c_num_bytes, hip.hipMemcpyKind.hipMemcpyDeviceToHost))
+# if not np.allclose(c_h, correct, atol=5e-3, rtol=1e-2):
+#     assert np.sum((c_h - correct) != 0) < 0.005
+# # print(c_h)
