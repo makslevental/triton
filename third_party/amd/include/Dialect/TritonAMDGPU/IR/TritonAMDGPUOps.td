@@ -37,8 +37,8 @@ include "mlir/IR/EnumAttr.td"
 include "mlir/Dialect/LLVMIR/LLVMOpBase.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td" // Pure
-include "TritonAMDGPUDialect.td"
-include "TritonAMDGPUAttrDefs.td"
+include "amd/include/Dialect/TritonAMDGPU/IR/TritonAMDGPUDialect.td"
+include "amd/include/Dialect/TritonAMDGPU/IR/TritonAMDGPUAttrDefs.td"
 
 
 class TT_AMDGPU_Op<string mnemonic, list<Trait> traits = []> :

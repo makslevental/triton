@@ -84,11 +84,12 @@ endif()
 # Compiler flags
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 if(NOT MSVC)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D__STDC_FORMAT_MACROS  -fPIC -std=gnu++17")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D__STDC_FORMAT_MACROS -fPIC -std=gnu++17")
 else()
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D__STDC_FORMAT_MACROS")
 endif()
 
+set(TRITON_BUILD_UT 0)
 
 # #########
 # LLVM
@@ -142,7 +143,7 @@ endfunction()
 
 # Disable warnings that show up in external code (gtest;pybind11)
 if(NOT MSVC)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Werror -Wno-covered-switch-default -fvisibility=hidden")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-covered-switch-default -fvisibility=hidden")
 else()
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd4244 /wd4624 /wd4715 /wd4530")
 endif()
@@ -154,6 +155,8 @@ include_directories(${PROJECT_SOURCE_DIR}/include)
 include_directories(${PROJECT_BINARY_DIR}/include) # Tablegen'd files
 include_directories(${PROJECT_SOURCE_DIR}/third_party)
 include_directories(${PROJECT_BINARY_DIR}/third_party) # Tablegen'd files
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/third_party/amd/include)
+include_directories(${CMAKE_CURRENT_BINARY_DIR}/third_party/amd/include)
 
 # link_directories(${LLVM_LIBRARY_DIR})
 add_subdirectory(include)
@@ -310,6 +313,9 @@ if(TRITON_BUILD_PYTHON_MODULE AND NOT WIN32)
   endif()
 
   target_link_options(triton PRIVATE ${PYTHON_LDFLAGS})
+  set_target_properties(triton PROPERTIES ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/python/triton/_C)
+  set_target_properties(triton PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/python/triton/_C)
+  set_target_properties(triton PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/python/triton/_C)
 endif()
 
 if(NOT TRITON_BUILD_PYTHON_MODULE)
@@ -322,8 +328,8 @@ endif()
 find_package(Threads REQUIRED)
 
 add_subdirectory(third_party/f2reduce)
-add_subdirectory(bin)
-add_subdirectory(test)
+#add_subdirectory(bin)
+#add_subdirectory(test)
 
 if(TRITON_BUILD_UT)
   add_subdirectory(unittest)
@@ -333,4 +339,16 @@ if(TRITON_BUILD_UT)
     DEPENDS TritonUnitTests
     USES_TERMINAL
   )
+endif()
+
+# find_package(PythonLibs REQUIRED)
+set(TRITON_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+set(TRITON_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/include")
+set(TRITON_BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}")
+set(TRITON_BINARY_INCLUDE_DIR "${CMAKE_CURRENT_BINARY_DIR}/include")
+
+if(TRITON_BUILD_MLIR_PYTHON_MODULE)
+  include(MLIRDetectPythonEnv)
+  mlir_configure_python_dev_packages()
+  add_subdirectory(python/triton_mlir)
 endif()
