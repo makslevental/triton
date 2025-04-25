@@ -46,6 +46,11 @@
 #include "triton/Tools/Sys/GetEnv.hpp"
 #include "llvm/Analysis/CGSCCPassManager.h"
 #include "llvm/Analysis/LoopAnalysisManager.h"
+#include "llvm/CodeGen/CodeGenTargetMachineImpl.h"
+#include "llvm/CodeGen/MachineFunctionPass.h"
+#include "llvm/CodeGen/MachineModuleInfo.h"
+#include "llvm/CodeGen/Passes.h"
+#include "llvm/CodeGen/TargetPassConfig.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/PassTimingInfo.h"
@@ -61,6 +66,7 @@
 #include "llvm/MC/MCParser/MCAsmParser.h"
 #include "llvm/MC/MCParser/MCTargetAsmParser.h"
 #include "llvm/MC/MCRegisterInfo.h"
+#include "llvm/MC/MCStreamer.h"
 #include "llvm/MC/MCSubtargetInfo.h"
 #include "llvm/MC/TargetRegistry.h"
 #include "llvm/Passes/OptimizationLevel.h"
@@ -101,7 +107,10 @@ namespace mlir::test {
 
 namespace llvm {
 class OptimizationLevel;
-}
+extern char &MaxsMachineFunctionID;
+extern char &SIFoldOperandsLegacyID;
+} // namespace llvm
+extern void initializeMaxsMachineFunctionPass(llvm::PassRegistry &Registry);
 using namespace mlir::python;
 using namespace mlir::python::nanobind_adaptors;
 namespace nb = nanobind;
@@ -354,6 +363,61 @@ createTargetMachine(llvm::Module *module, std::string proc,
   return machine;
 }
 
+/// addPassesToX helper drives creation and initialization of TargetPassConfig.
+static llvm::TargetPassConfig *
+addPassesToGenerateCode(llvm::CodeGenTargetMachineImpl &TM,
+                        llvm::PassManagerBase &PM, bool DisableVerify,
+                        llvm::MachineModuleInfoWrapperPass &MMIWP) {
+  // Targets may override createPassConfig to provide a target-specific
+  // subclass.
+  llvm::TargetPassConfig *PassConfig = TM.createPassConfig(PM);
+  PassConfig->insertPass(&llvm::SIFoldOperandsLegacyID,
+                         &llvm::MaxsMachineFunctionID);
+  // Set PassConfig options provided by TargetMachine.
+  PassConfig->setDisableVerify(DisableVerify);
+  PM.add(PassConfig);
+  PM.add(&MMIWP);
+
+  if (PassConfig->addISelPasses())
+    return nullptr;
+  PassConfig->addMachinePasses();
+
+  PassConfig->setInitialized();
+  return PassConfig;
+}
+
+class CodeGenTargetMachineImplMine : public llvm::CodeGenTargetMachineImpl {
+public:
+  bool addPassesToEmitFileMine(
+      llvm::PassManagerBase &PM, llvm::raw_pwrite_stream &Out,
+      llvm::raw_pwrite_stream *DwoOut, llvm::CodeGenFileType FileType,
+      bool DisableVerify = true,
+      llvm::MachineModuleInfoWrapperPass *MMIWP = nullptr) {
+    // Add common CodeGen passes.
+    if (!MMIWP)
+      MMIWP = new llvm::MachineModuleInfoWrapperPass(this);
+    llvm::TargetPassConfig *PassConfig =
+        addPassesToGenerateCode(*this, PM, DisableVerify, *MMIWP);
+    if (!PassConfig)
+      return true;
+    PassConfig->dump();
+
+    if (llvm::TargetPassConfig::willCompleteCodeGenPipeline()) {
+      if (addAsmPrinter(PM, Out, DwoOut, FileType,
+                        MMIWP->getMMI().getContext()))
+        return true;
+    } else {
+      // MIR printing is redundant with -filetype=null.
+      if (FileType != llvm::CodeGenFileType::Null)
+        PM.add(llvm::createPrintMIRPass(Out));
+    }
+
+    PM.add(llvm::createFreeMachineFunctionPass());
+
+    return false;
+  }
+};
+
 std::string translateLLVMIRToASM(llvm::Module &module,
                                  const std::string &triple,
                                  const std::string &proc,
@@ -433,7 +497,8 @@ std::string translateLLVMIRToASM(llvm::Module &module,
     // emit
     auto fileType = isObject ? llvm::CodeGenFileType::ObjectFile
                              : llvm::CodeGenFileType::AssemblyFile;
-    machine->addPassesToEmitFile(pass, pstream, nullptr, fileType);
+    reinterpret_cast<CodeGenTargetMachineImplMine *>(machine.get())
+        ->addPassesToEmitFileMine(pass, pstream, nullptr, fileType);
     pass.run(module);
 
     if (enabledTiming) {
@@ -600,7 +665,8 @@ std::string translateLLVMIRToASM(llvm::Module &module,
     // emit
     auto fileType = isObject ? llvm::CodeGenFileType::ObjectFile
                              : llvm::CodeGenFileType::AssemblyFile;
-    machine->addPassesToEmitFile(pass, pstream, nullptr, fileType);
+    reinterpret_cast<CodeGenTargetMachineImplMine *>(machine.get())
+        ->addPassesToEmitFileMine(pass, pstream, nullptr, fileType);
     pass.run(module);
 
     if (enabledTiming) {
@@ -904,6 +970,8 @@ void init_triton_llvm(nb::module_ &m) {
       llvm::InitializeAllTargetMCs();
       llvm::InitializeAllAsmParsers();
       llvm::InitializeAllAsmPrinters();
+      llvm::PassRegistry *Registry = llvm::PassRegistry::getPassRegistry();
+      initializeMaxsMachineFunctionPass(*Registry);
     });
   });
 
