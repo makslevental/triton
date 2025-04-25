@@ -153,6 +153,7 @@ set(_libs
   MLIRLLVMToLLVMIRTranslation
 
   # LLVM
+  LLVMCodeGen
   LLVMSupport
   LLVMTargetParser
   LLVMCore
@@ -297,6 +298,7 @@ declare_mlir_python_extension(TritonPythonSources.Extension
   OUTPUT_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/triton_mlir/_mlir_libs"
   SOURCES
     ${CMAKE_CURRENT_LIST_DIR}/triton_mlir/TritonExtension.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/triton_mlir/MaxsMachineFunction.cpp
     "${_mlir_python_cpp_sources}"
   PRIVATE_LINK_LIBS
     ${_libs}
