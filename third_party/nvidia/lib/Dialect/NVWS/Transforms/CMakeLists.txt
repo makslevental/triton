@@ -1,4 +1,4 @@
-add_triton_library(NVWSTransforms
+add_mlir_library(NVWSTransforms
   LowerAref.cpp
   LowerWarpGroup.cpp
 

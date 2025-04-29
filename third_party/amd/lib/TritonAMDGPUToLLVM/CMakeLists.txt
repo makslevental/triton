@@ -23,6 +23,7 @@ add_triton_library(TritonAMDGPUToLLVM
     SPMDOpToLLVM.cpp
     SchedInstructions.cpp
     UpcastMXFPToLLVM.cpp
+    UnpackFMul.cpp
 
     DEPENDS
     TritonAMDGPUConversionPassIncGen
@@ -31,4 +32,5 @@ add_triton_library(TritonAMDGPUToLLVM
     TritonGPUToLLVM
     TritonAMDGPUIR
     TritonProtonToLLVM
+    LLVMCore
 )

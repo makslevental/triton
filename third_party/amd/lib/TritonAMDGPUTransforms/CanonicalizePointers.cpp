@@ -13,7 +13,7 @@
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/Transforms/OneToNTypeConversion.h"
+// #include "mlir/Transforms/OneToNTypeConversion.h"
 #include "triton/Analysis/Utility.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/Triton/IR/Types.h"
@@ -33,6 +33,8 @@
 #define GEN_PASS_CLASSES
 #include "TritonAMDGPUTransforms/Passes.h.inc"
 #include "mlir/Transforms/WalkPatternRewriteDriver.h"
+
+#include <mlir/Transforms/DialectConversion.h>
 
 #define DEBUG_TYPE "tritonamdgpu-canonicalize-pointers"
 #define DBGS() (llvm::dbgs() << "[" DEBUG_TYPE "]: ")
@@ -1244,6 +1246,8 @@ struct InitFuncPtrArgs : OpRewritePattern<tt::FuncOp> {
     for (auto [idx, arg] : llvm::enumerate(newOp.getArguments())) {
       // The pointer argument needs to be a scalar
       if (!isa<tt::PointerType>(arg.getType()))
+        continue;
+      if (arg.getUses().empty())
         continue;
       if (auto pointerRangeAttr =
               newOp.getArgAttrOfType<IntegerAttr>(idx, "tt.pointer_range"))

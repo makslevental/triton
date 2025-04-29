@@ -1,4 +1,4 @@
-add_triton_library(NVWSIR
+add_mlir_library(NVWSIR
   Dialect.cpp
   Ops.cpp
 

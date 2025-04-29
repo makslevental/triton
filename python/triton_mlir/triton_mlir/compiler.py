@@ -497,6 +497,10 @@ class HIPBackend(BaseBackend):
 
         # Set kernel attributes first given this may affect later optimizations.
         fns = [fn for fn in llvm_mod.get_functions() if not fn.is_declaration()]
+        if not len(fns):
+            print(llvm_mod)
+            raise ValueError("couldn't find kernel fn")
+
         # The public kernel should be kernel 0.
         fns[0].set_calling_conv(amd.CALLING_CONV_AMDGPU_KERNEL)
         fns[0].add_fn_attr(
@@ -537,9 +541,15 @@ class HIPBackend(BaseBackend):
             ]
             llvm.link_extern_libs(llvm_mod, paths)
 
+        # print(llvm_mod)
         llvm.optimize_module(
             llvm_mod, llvm.OPTIMIZE_O3, options.arch, "", [], options.enable_fp_fusion
         )
+        fns = [fn for fn in llvm_mod.get_functions() if not fn.is_declaration()]
+        if not len(fns):
+            print(llvm_mod)
+            raise ValueError("couldn't find kernel fn")
+        llvm.maxs_llvmir_pass(fns[0])
 
         # Get some metadata
         metadata["shared"] = src.get_int_attr("ttg.shared")

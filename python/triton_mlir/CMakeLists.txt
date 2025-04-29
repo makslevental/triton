@@ -19,8 +19,8 @@ include_directories(${TRITON_BINARY_DIR}/third_party/proton/include)
 include_directories(${TRITON_SOURCE_DIR}/third_party/proton/dialect/include/Dialect/Proton/IR)
 
 if(DEFINED MLIR_INSTALL_PREFIX)
-  find_package(LLD REQUIRED CONFIG PATHS ${MLIR_DIR})
-  include_directories(${LLD_INCLUDE_DIRS})
+   find_package(LLD REQUIRED CONFIG PATHS ${MLIR_DIR})
+   include_directories(${LLD_INCLUDE_DIRS})
 endif()
 
 set(CMAKE_C_VISIBILITY_PRESET "hidden")
@@ -153,6 +153,13 @@ set(_libs
   MLIRLLVMToLLVMIRTranslation
 
   # LLVM
+  ${LLVM_AVAILABLE_LIBS}
+  LLVMCodeGen
+  LLVMAnalysis
+  LLVMCore
+  LLVMSupport
+  LLVMOption
+  LLVMCodeGen
   LLVMSupport
   LLVMTargetParser
   LLVMCore
@@ -191,7 +198,7 @@ elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64")
     LLVMAArch64Disassembler)
 endif()
 
-list(REMOVE_DUPLICATES _libs)
+#list(REMOVE_DUPLICATES _libs)
 list(REMOVE_ITEM _libs
   mlir_c_runner_utils
   mlir_runner_utils

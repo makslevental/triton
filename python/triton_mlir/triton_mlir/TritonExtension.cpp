@@ -51,6 +51,7 @@
 #include "llvm/IR/PassTimingInfo.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/IRReader/IRReader.h"
+#include "llvm/InitializePasses.h"
 #include "llvm/Linker/Linker.h"
 #include "llvm/MC/MCAsmBackend.h"
 #include "llvm/MC/MCAsmInfo.h"
@@ -61,6 +62,7 @@
 #include "llvm/MC/MCParser/MCAsmParser.h"
 #include "llvm/MC/MCParser/MCTargetAsmParser.h"
 #include "llvm/MC/MCRegisterInfo.h"
+#include "llvm/MC/MCStreamer.h"
 #include "llvm/MC/MCSubtargetInfo.h"
 #include "llvm/MC/TargetRegistry.h"
 #include "llvm/Passes/OptimizationLevel.h"
@@ -102,6 +104,7 @@ namespace mlir::test {
 namespace llvm {
 class OptimizationLevel;
 }
+extern void runMaxsLLVMIRPassOnFunction(llvm::Function &F);
 using namespace mlir::python;
 using namespace mlir::python::nanobind_adaptors;
 namespace nb = nanobind;
@@ -745,6 +748,9 @@ void init_triton_llvm(nb::module_ &m) {
     mod->setDataLayout(machine->createDataLayout());
   });
 
+  m.def("maxs_llvmir_pass",
+        [](llvm::Function *fn) { runMaxsLLVMIRPassOnFunction(*fn); });
+
   m.def(
       "optimize_module",
       [](llvm::Module *mod, const llvm::OptimizationLevel &opt,
@@ -904,6 +910,8 @@ void init_triton_llvm(nb::module_ &m) {
       llvm::InitializeAllTargetMCs();
       llvm::InitializeAllAsmParsers();
       llvm::InitializeAllAsmPrinters();
+      llvm::PassRegistry &Registry = *llvm::PassRegistry::getPassRegistry();
+      llvm::initializeTarget(Registry);
     });
   });
 

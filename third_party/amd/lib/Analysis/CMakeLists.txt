@@ -1,4 +1,4 @@
-add_triton_library(TritonAMDAnalysis
+add_mlir_library(TritonAMDAnalysis
   RangeAnalysis.cpp
 
   DEPENDS
