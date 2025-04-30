@@ -104,7 +104,7 @@ namespace mlir::test {
 namespace llvm {
 class OptimizationLevel;
 }
-extern void runMaxsLLVMIRPassOnFunction(llvm::Function &F);
+extern void runUnpackVectorFMulPassOnFunction(llvm::Function &F);
 using namespace mlir::python;
 using namespace mlir::python::nanobind_adaptors;
 namespace nb = nanobind;
@@ -749,7 +749,7 @@ void init_triton_llvm(nb::module_ &m) {
   });
 
   m.def("maxs_llvmir_pass",
-        [](llvm::Function *fn) { runMaxsLLVMIRPassOnFunction(*fn); });
+        [](llvm::Function *fn) { runUnpackVectorFMulPassOnFunction(*fn); });
 
   m.def(
       "optimize_module",
