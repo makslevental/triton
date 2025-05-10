@@ -1,0 +1,43 @@
+import warnings
+
+# becomes namespace package
+from pkgutil import extend_path
+
+__path__ = extend_path(__path__, __name__)
+
+from pathlib import Path
+
+import importlib.machinery
+import sys
+from importlib.abc import MetaPathFinder
+import importlib.util
+
+_triton_mod_path = (
+    Path(__file__).parent / "_mlir_libs" / "_triton@PYTHON_MODULE_EXTENSION@"
+)
+assert _triton_mod_path.exists(), f"couldn't find {_triton_mod_path}"
+
+
+class MyMetaFinder(MetaPathFinder):
+    def find_spec(self, fullname, path, target=None):
+        if fullname.startswith("triton_mlir._mlir_libs."):
+            loader = importlib.machinery.ExtensionFileLoader(
+                fullname, str(_triton_mod_path)
+            )
+            spec = importlib.util.spec_from_loader(fullname, loader)
+
+            try:
+                importlib.util.module_from_spec(spec)
+                return spec
+            except ImportError as e:
+                if "PyInit__mlirRegisterEverything" in e.msg:
+                    pass
+                elif "PyInit__site_initialize_1" in e.msg:
+                    pass
+                else:
+                    warnings.warn(e.msg)
+
+        return None
+
+
+sys.meta_path.insert(0, MyMetaFinder())

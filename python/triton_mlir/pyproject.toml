@@ -1,0 +1,61 @@
+#  Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+#  See https://llvm.org/LICENSE.txt for license information.
+#  SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#  Copyright (c) 2024.
+
+[project]
+name = "triton-mlir"
+version = "0.0.1"
+requires-python = ">=3.9"
+dependencies = [
+    "triton-mlir-python-extras @ git+https://github.com/makslevental/mlir-python-extras@makslevental/triton_mlir",
+    "numpy>=1.19.5, <=2.1.2",
+    "ml_dtypes>=0.1.0, <=0.5.0"
+]
+
+[project.urls]
+Homepage = "https://github.com/makslevental/triton"
+
+[project.optional-dependencies]
+hip = ["hip-python"]
+
+[build-system]
+requires = [
+    "nanobind>=2.2.0",
+    "pybind11>=2.10.0, <=2.13.6",
+    "scikit-build-core>=0.10.7",
+    "typing_extensions==4.12.2",
+    "eudsl-tblgen",
+    "PyYAML>=6.0.2"
+]
+build-backend = "scikit_build_core.build"
+
+[tool.scikit-build]
+minimum-version = "0.10"
+build-dir = "build/{wheel_tag}"
+cmake.source-dir = "../.."
+wheel.exclude = ["src/*", "lib/*", "*.cpp", "*.in", "*.gitignore", "*.td", "*.pyc"]
+wheel.py-api = "cp312"
+
+[tool.scikit-build.cmake.define]
+CMAKE_PREFIX_PATH = { env = "CMAKE_PREFIX_PATH", default = "" }
+CMAKE_C_FLAGS = { env = "CMAKE_C_FLAGS", default = "" }
+CMAKE_CXX_FLAGS = { env = "CMAKE_CXX_FLAGS", default = "" }
+CMAKE_C_COMPILER_LAUNCHER = { env = "CMAKE_C_COMPILER_LAUNCHER", default = "" }
+CMAKE_CXX_COMPILER_LAUNCHER = { env = "CMAKE_CXX_COMPILER_LAUNCHER", default = "" }
+CMAKE_EXE_LINKER_FLAGS_INIT = { env = "CMAKE_EXE_LINKER_FLAGS_INIT", default = "" }
+CMAKE_SHARED_LINKER_FLAGS_INIT = { env = "CMAKE_SHARED_LINKER_FLAGS_INIT", default = "" }
+CMAKE_MODULE_LINKER_FLAGS_INIT = { env = "CMAKE_MODULE_LINKER_FLAGS_INIT", default = "" }
+CMAKE_OSX_DEPLOYMENT_TARGET = { env = "CMAKE_OSX_DEPLOYMENT_TARGET", default = "" }
+CMAKE_OSX_ARCHITECTURES = { env = "CMAKE_OSX_ARCHITECTURES", default = "" }
+CMAKE_C_VISIBILITY_PRESET = "hidden"
+CMAKE_CXX_VISIBILITY_PRESET = "hidden"
+CMAKE_VISIBILITY_INLINES_HIDDEN = "ON"
+CMAKE_VERBOSE_MAKEFILE = "ON"
+LLVM_TEMPORARILY_ALLOW_OLD_TOOLCHAIN = "ON"
+TRITON_BUILD_MLIR_PYTHON_MODULE = "ON"
+TRITON_BUILD_PROTON = "OFF"
+TRITON_BUILD_PYTHON_MODULE = "OFF"
+TRITON_BUILD_TUTORIALS = "OFF"
+TRITON_BUILD_UT = "OFF"
+TRITON_CODEGEN_BACKENDS = "amd;nvidia"
